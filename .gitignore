@@ -1,0 +1,8 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+.venv/
+__pycache__/
+.ruff_cache/
+.coverage
