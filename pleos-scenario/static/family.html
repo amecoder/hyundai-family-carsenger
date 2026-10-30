@@ -130,7 +130,7 @@ audio { width: 100%; }
     const car = it.kind === "message";
     const mine = !car && it.sender === me;
     const color = car ? "" : `style="background:${AVATAR[it.sender] || "#79619e"}"`;
-    const who = car ? "가족석 차량 알림" : it.sender;
+    const who = car ? "현대 패밀리 카신저 차량 알림" : it.sender;
     return `<div class="msg ${car ? "car" : "fam"} ${mine ? "me" : ""}"><span class="av" ${color}>${esc(car ? "차" : it.sender.slice(0, 1))}</span>
       <div><div class="b">${esc(it.text)}</div><small>${esc(who)} · ${esc(it.at)}</small></div></div>`;
   }

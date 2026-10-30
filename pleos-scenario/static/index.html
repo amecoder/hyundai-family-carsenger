@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>가족석 시나리오 실행기</title>
+<title>현대 패밀리 카신저 시나리오 실행기</title>
 <style>
 :root {
   --bg: #f3f5f9; --surface: #fff; --ink: #172033; --muted: #5a6478; --line: #dce1ea;
@@ -78,8 +78,8 @@ a { color: var(--teal); }
 <div class="wrap">
   <header>
     <div>
-      <h1>가족석 시나리오 실행기</h1>
-      <div class="muted">시나리오를 누르면 Pleos 에뮬레이터의 차량 신호가 바뀌고, 에뮬레이터 안의 가족석 앱과 가족 폰 화면이 함께 반응합니다.</div>
+      <h1>현대 패밀리 카신저 시나리오 실행기</h1>
+      <div class="muted">시나리오를 누르면 Pleos 에뮬레이터의 차량 신호가 바뀌고, 에뮬레이터 안의 현대 패밀리 카신저 앱과 가족 폰 화면이 함께 반응합니다.</div>
     </div>
     <div class="pills"><span class="pill" id="pConsole">에뮬레이터 확인 중</span><span class="pill" id="pScreen">화면 확인 중</span><span class="pill" id="pApp">차량 앱 확인 중</span></div>
   </header>
@@ -93,14 +93,14 @@ a { color: var(--teal); }
         <span>· 차량 앱의 판단은 실제 차량 신호(기어·문·좌석·속도·충전량)로만 합니다.</span>
         <span>· 내비 경유지·도착 예정 시간은 에뮬레이터 지도가 로딩되지 않아 시나리오 값으로 대신합니다.</span>
         <span>· 시나리오의 응원은 문구를 Pleos TTS로 읽고, 가족 앱에서 녹음한 응원은 그 목소리를 그대로 재생합니다.</span>
-        <span>· 가족석 앱이 화면 뒤로 가면 안드로이드가 앱을 멈춥니다. 시연 중에는 가족석 앱을 앞에 띄워 두세요.</span>
+        <span>· 현대 패밀리 카신저 앱이 화면 뒤로 가면 안드로이드가 앱을 멈춥니다. 시연 중에는 현대 패밀리 카신저 앱을 앞에 띄워 두세요.</span>
         <span>· 차 모습: <a href="http://127.0.0.1:8088/" target="_blank" rel="noopener">Virtual Console</a></span>
       </div>
     </section>
 
     <section class="panel">
       <h2>차량 화면 <span class="muted" style="font-weight:400">· 에뮬레이터 실시간 · 우리 차 투싼(그레이)</span></h2>
-      <div class="screen"><img id="screen" alt="에뮬레이터 화면"><div class="ph" id="screenPh">에뮬레이터 화면을 불러오는 중…</div><div class="now" id="nowBox"></div><div class="cap" id="cap"></div><div class="dnote" id="dnote">주행 중(D)에는 Pleos가 서드파티 앱 화면을 가립니다. 가족석은 이때 음성으로만 안내하고, 가족에게 보내는 알림은 계속 동작합니다.</div></div>
+      <div class="screen"><img id="screen" alt="에뮬레이터 화면"><div class="ph" id="screenPh">에뮬레이터 화면을 불러오는 중…</div><div class="now" id="nowBox"></div><div class="cap" id="cap"></div><div class="dnote" id="dnote">주행 중(D)에는 Pleos가 서드파티 앱 화면을 가립니다. 현대 패밀리 카신저는 이때 음성으로만 안내하고, 가족에게 보내는 알림은 계속 동작합니다.</div></div>
       <div class="veh" id="veh"></div>
       <div class="err" id="err"></div>
       <div class="runbar">
@@ -116,6 +116,11 @@ a { color: var(--teal); }
         <button type="button" data-a="door_close">왼쪽 뒷문 닫기</button>
         <button type="button" data-a="seat_on">뒷좌석 착석</button>
         <button type="button" data-a="seat_off">뒷좌석 비움</button>
+      </div>
+      <div class="manual" id="voice">
+        <span class="muted">운전자 음성 (데모 TTS 녹음 → 차가 음성 인식):</span>
+        <button type="button" data-clip="driver_yes">🎙 "응, 추가해 줘"</button>
+        <button type="button" data-clip="driver_no">🎙 "아니, 지금은 안 돼"</button>
       </div>
       <ol class="steps" id="steps"><li class="muted" style="display:block">왼쪽에서 시나리오를 고르세요.</li></ol>
     </section>
@@ -249,6 +254,11 @@ a { color: var(--teal); }
     const r = await fetch("/api/manual/" + b.dataset.a, { method: "POST" });
     if (!r.ok) { const d = await r.json(); alert(d.error); }
     pollStatus();
+  }));
+
+  $("voice").querySelectorAll("button").forEach(b => b.addEventListener("click", async () => {
+    const r = await fetch("/api/driver/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clip: b.dataset.clip }) });
+    if (!r.ok) { const d = await r.json(); alert(d.error); }
   }));
 
   $("stop").addEventListener("click", () => fetch("/api/stop", { method: "POST" }).then(pollStatus));

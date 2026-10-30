@@ -177,7 +177,7 @@ def test_pickup_scenario_drives_the_whole_family_flow() -> None:
     run_sync(PICKUP, client)
     car = [c[1] for c in client.calls if c[0] == "car"]
     assert car[:2] == ["reset", "set_trip"]
-    assert car.index("pickup_request") < car.index("driver_reply") < car.index("cheer")
+    assert car.index("pickup_request") < car.index("driver_voice") < car.index("cheer")
     family = [c[1] for c in client.calls if c[0] == "family"]
     assert "민지" in family and "엄마" in family
 
@@ -208,8 +208,8 @@ def _index(calls: list[tuple], wanted: tuple) -> int:
 
 def test_pickup_decline_scenario_sends_a_refusal_while_driving() -> None:
     calls = _calls("pickup_decline")
-    assert ("car", "driver_reply", (("accept", False),)) in calls
-    assert _index(calls, ("gear", "D")) < _index(calls, ("car", "driver_reply")) < _index(calls, ("gear", "P"))
+    assert ("car", "driver_voice", (("clip", "driver_no"), ("fallback_accept", False))) in calls
+    assert _index(calls, ("gear", "D")) < _index(calls, ("car", "driver_voice")) < _index(calls, ("gear", "P"))
 
 
 def test_many_cheers_scenario_queues_four_cheers_before_two_stops() -> None:
@@ -238,3 +238,12 @@ def test_parked_pickup_scenario_requests_before_departure_and_boards_on_the_righ
     # the cheer comes while still parked at the pickup spot, before the drive home
     cheer = _index(calls, ("car", "cheer"))
     assert right[-1] < cheer < next(i for i, c in enumerate(calls) if c == ("gear", "D") and i > right[-1])
+
+
+def test_pickups_to_known_places_carry_coordinates_for_the_navigation() -> None:
+    from scenario.scenarios import PLACES
+
+    calls = _calls("pickup")
+    pickup = next(c for c in calls if c[:2] == ("car", "pickup_request"))
+    fields = dict(pickup[2])
+    assert (fields["lat"], fields["lon"]) == PLACES[fields["place"]]

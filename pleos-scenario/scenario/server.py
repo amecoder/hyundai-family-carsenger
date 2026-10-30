@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import time
 from collections.abc import Callable
 from dataclasses import asdict
@@ -14,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 from scenario.family import FAMILY_SENDERS, MAX_AUDIO_BYTES, FamilyHub
 from scenario.runner import ScenarioRunner
-from scenario.scenarios import MANUAL, SCENARIOS, find
+from scenario.scenarios import MANUAL, SCENARIOS, find, pickup_fields
 from scenario.screen import ScreenGrabber, adb_capture, default_adb, pillow_resize
 from scenario.vc_client import VirtualConsoleClient
 
@@ -29,6 +30,9 @@ PICKUP_ETA_MIN = 12  # demo stand-in for a navigation ETA
 MAX_CLIP_MS = 60_000
 # names this server may be reached by: this PC, and 10.0.2.2 = the PC as seen from inside the emulator
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "10.0.2.2")
+# recorded driver answers (16 kHz mono PCM) the car feeds to speech recognition; kept outside the repo
+VOICE_CLIPS = ("driver_yes", "driver_no")
+DEFAULT_VOICE_DIR = Path(os.environ.get("PLEOS_VOICE_DIR", Path.home() / "Android" / "voice"))
 
 
 class Console(Protocol):
@@ -113,8 +117,9 @@ def scenario_payload() -> list[dict[str, Any]]:
 
 class ScenarioServer(ThreadingHTTPServer):
     def __init__(self, addr: tuple[str, int], console: Console, hub: FamilyHub, runner: ScenarioRunner,
-                 grabber: ScreenGrabber | None) -> None:
+                 grabber: ScreenGrabber | None, voice_dir: Path = DEFAULT_VOICE_DIR) -> None:
         super().__init__(addr, Handler)
+        self.voice_dir = voice_dir
         self.console = console
         self.hub = hub
         self.runner = runner
@@ -207,6 +212,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, FAMILY_PAGE.read_bytes(), "text/html; charset=utf-8")
         elif url.path.startswith("/api/audio/"):
             self._audio(url.path.removeprefix("/api/audio/"))
+        elif url.path.startswith("/api/voice/"):
+            self._voice(url.path.removeprefix("/api/voice/"))
         else:
             self._send(HTTPStatus.NOT_FOUND, {"error": "없는 경로입니다"})
 
@@ -234,6 +241,15 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(HTTPStatus.OK, clip[0], clip[1])
 
+    def _voice(self, name: str) -> None:
+        # only the fixed clip names, so the path can never leave the voice folder
+        clip = name.removesuffix(".pcm")
+        path = self.app.voice_dir / f"{clip}.pcm"
+        if not name.endswith(".pcm") or clip not in VOICE_CLIPS or not path.is_file():
+            self._send(HTTPStatus.NOT_FOUND, {"error": "없는 음성 파일입니다"})
+            return
+        self._send(HTTPStatus.OK, path.read_bytes(), "application/octet-stream")
+
     def do_POST(self) -> None:
         if not self._trusted(post=True):
             self._send(HTTPStatus.FORBIDDEN, {"error": "다른 사이트에서 온 요청은 받지 않습니다"})
@@ -246,6 +262,8 @@ class Handler(BaseHTTPRequestHandler):
             self._family_pickup()
         elif path == "/api/family/cheer":
             self._family_cheer(parse_qs(url.query))
+        elif path == "/api/driver/voice":
+            self._driver_voice()
         elif path.startswith("/api/manual/"):
             self._manual(path.removeprefix("/api/manual/"))
         elif path.startswith("/api/run/"):
@@ -287,7 +305,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.BAD_REQUEST, {"error": f"보내는 사람과 {MAX_PLACE}자 이하의 장소가 필요합니다"})
             return
         self.app.hub.family_says(sender, f"데리러 와 · {place}")
-        self.app.hub.add_command("pickup_request", by=sender, place=place, eta_min=PICKUP_ETA_MIN)
+        self.app.hub.add_command("pickup_request", **dict(pickup_fields(sender, place, PICKUP_ETA_MIN)))
+        self._send(HTTPStatus.OK, {"ok": True})
+
+    def _driver_voice(self) -> None:
+        clip = (self._json_body() or {}).get("clip")
+        if clip not in VOICE_CLIPS:
+            self._send(HTTPStatus.BAD_REQUEST, {"error": f"clip은 {', '.join(VOICE_CLIPS)} 중 하나여야 합니다"})
+            return
+        self.app.hub.add_command("driver_voice", clip=clip, fallback_accept=clip == "driver_yes")
         self._send(HTTPStatus.OK, {"ok": True})
 
     def _family_cheer(self, query: dict[str, list[str]]) -> None:
@@ -335,14 +361,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def make_server(console: Console, host: str = "127.0.0.1", port: int = 8090,
                 sleep: Callable[[float], None] = time.sleep, hub: FamilyHub | None = None,
-                grabber: ScreenGrabber | None = None) -> ScenarioServer:
+                grabber: ScreenGrabber | None = None, voice_dir: Path = DEFAULT_VOICE_DIR) -> ScenarioServer:
     hub = hub or FamilyHub()
     runner = ScenarioRunner(DemoWorld(console, hub), sleep=sleep)
-    return ScenarioServer((host, port), console, hub, runner, grabber)
+    return ScenarioServer((host, port), console, hub, runner, grabber, voice_dir)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="가족석 시나리오 실행기 (Pleos Virtual Console 자동 조작 + 가족 서버 대역)")
+    parser = argparse.ArgumentParser(description="현대 패밀리 카신저 시나리오 실행기 (Pleos Virtual Console 자동 조작 + 가족 서버 대역)")
     parser.add_argument("--port", type=int, default=8090)
     parser.add_argument("--console", default="http://127.0.0.1:8088", help="Virtual Console 주소")
     parser.add_argument("--adb", default=default_adb(), help="에뮬레이터 화면 캡처에 쓸 adb 경로")

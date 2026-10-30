@@ -1,15 +1,15 @@
-# 가족석 시나리오 실행기 + 데모 환경
+# 현대 패밀리 카신저 시나리오 실행기 + 데모 환경
 
 시나리오 버튼 하나로 아래 세 가지가 동시에 움직입니다.
 
 1. **Pleos 에뮬레이터의 차량 신호** — Virtual Console을 대신 조작해 기어·속도·문·좌석·충전량을 바꿉니다.
-2. **에뮬레이터 안의 가족석 차량 앱** (`gajokseok-car`) — 그 신호를 Vehicle SDK로 받아 탑승 확인·도착·휴식·충전을 판단하고, 화면과 Pleos TTS 음성으로 반응합니다.
+2. **에뮬레이터 안의 현대 패밀리 카신저 차량 앱** (`prototypes/gajokseok-car`) — 그 신호를 Vehicle SDK로 받아 탑승 확인·도착·휴식·충전을 판단하고, 화면과 Pleos TTS 음성으로 반응합니다.
 3. **엄마 폰(가족 웹) 화면** — 차가 보낸 알림이 실행기 페이지 오른쪽 채팅에 실시간으로 쌓입니다.
 
 ## 실행
 
 ```bash
-cd pleos-scenario
+cd prototypes/pleos-scenario
 ./start_demo.sh            # 에뮬레이터 창을 띄워서 실행
 ./start_demo.sh --headless # 창 없이 실행
 ```
@@ -21,13 +21,13 @@ cd pleos-scenario
 - AVD `pleos21`: 이미지의 `devices.xml` 사양대로 2560×1440·160dpi·RAM 4GB·`-gpu host`. 에뮬레이터는 데이터 영역을 최소 6GB로 강제하고 그 1.2배(7.4GB)의 디스크 여유를 요구합니다(`-partition-size`로도 줄지 않음).
 - 차량 앱 빌드는 Gradle 9.6 이상이 필요합니다(AGP 9.4.1). 스크립트 기본 경로 `~/Android/gradle/gradle-9.8.2`에 둡니다.
 - 스크립트는 macOS에서 SDK 경로를 `~/Library/Android/sdk`로 잡고, `setsid` 대신 `python3`의 이중 fork로 에뮬레이터를 분리합니다.
-- 부팅 직후 가족석 앱이 지도 앱 뒤로 밀려 있으면 하단 바의 안드로이드 아이콘을 눌러 앞으로 띄웁니다.
+- 부팅 직후 현대 패밀리 카신저 앱이 지도 앱 뒤로 밀려 있으면 하단 바의 안드로이드 아이콘을 눌러 앞으로 띄웁니다.
 
 스크립트가 하는 일:
 
 1. 에뮬레이터(`pleos21`)가 꺼져 있으면 켜고 부팅을 기다립니다.
 2. `adb forward tcp:8088 tcp:8088`로 Virtual Console을 연결합니다.
-3. 가족석 차량 앱을 빌드(소스가 바뀌었을 때만)·설치·실행합니다.
+3. 현대 패밀리 카신저 차량 앱을 빌드(소스가 바뀌었을 때만)·설치·실행합니다.
 4. 실행기 서버를 띄우고 브라우저에서 `http://127.0.0.1:8090`을 엽니다.
 
 끄려면 `Ctrl+C`, 에뮬레이터는 `adb emu kill`.
@@ -61,25 +61,26 @@ cd pleos-scenario
 | 가족 앱 | 차에서 일어나는 일 |
 |---|---|
 | 글 보내기 | 가족방에만 올라갑니다. 운전 중 메시지 낭독은 기획서에서 뺀 기능이라 차로 보내지 않습니다 |
-| 🚗 데리러 와 → 장소 선택 | 차 화면에 "경유지로 추가할까요?" 카드와 음성 질문. 에뮬레이터 창에서 [추가]/[취소]를 직접 누릅니다 |
+| 🚗 데리러 와 → 장소 선택 | 차 화면에 "경유지로 추가할까요?" 카드와 음성 질문 뒤 **운전자 대답을 음성 인식으로 듣습니다**. 실행기의 「운전자 음성」 버튼을 누르거나 에뮬레이터 창에서 [추가]/[취소]를 누릅니다. 12초 동안 답이 없으면 거절로 처리합니다. 승인하면 내비가 앞으로 나와 그 장소로 경로를 잡습니다(알려진 장소만, 직접 입력한 장소는 좌표가 없어 음성 안내만) |
 | 🎙 응원 녹음 (최대 15초) → 보내기 | 주행 중이면 보관했다가 P(주차)에서 **녹음한 목소리 그대로** 재생. 녹음을 못 받으면 문구를 TTS로 읽습니다 |
 
 가운데 **수동 조작** 버튼으로 차를 움직입니다. 예를 들어 픽업 흐름은 이렇게 됩니다.
 
-1. 「처음 상태로」 → 가족 앱(민지)에서 「데리러 와」 → 에뮬레이터에서 [추가]
+1. 「처음 상태로」 → 가족 앱(민지)에서 「데리러 와」 → 「🎙 "응, 추가해 줘"」 → 내비에 학원 경로(약 12분)
 2. 「출발」(D·40km/h, 「정차」를 누를 때까지 계속 달림) → 「정차」 → 가족방에 "학원 앞에 도착했어요"
 3. 「왼쪽 뒷문 열기」 → 「뒷좌석 착석」 → 「왼쪽 뒷문 닫기」 → "뒷좌석 탑승 확인 (민지)"
 4. 「출발」 → 가족 앱(엄마)에서 응원 녹음·보내기 → 「정차」 → 차에서 엄마 목소리 재생
 
 주의할 점입니다.
 
-- **가족석 앱을 에뮬레이터 화면 앞에 띄워 두세요.** 안드로이드 14는 화면 뒤로 간 앱을 얼려서(배경 앱 동결) 명령을 받지 못합니다. 지도 등 다른 앱이 앞에 오면 하단의 가족석 아이콘을 누르거나 `adb shell am start --user 10 -n dev.gajokseok.car/.MainActivity`를 실행합니다.
+- 현대 패밀리 카신저는 **포그라운드 서비스**로 돌아서 내비가 앞에 있어도 명령을 받고 음성·알림을 냅니다(10-29부터. 그 전에는 안드로이드 14가 뒤로 간 앱을 얼렸습니다). 응원 카드 같은 화면을 보여 주려면 하단의 현대 패밀리 카신저 아이콘을 누르거나 `adb shell am start --user 10 -n dev.gajokseok.car/.MainActivity`를 실행합니다.
+- **운전자 음성**은 공개 TTS(Edge TTS)로 만든 녹음 `driver_yes.pcm`("응, 추가해 줘")·`driver_no.pcm`("아니, 지금은 안 돼")을 차가 받아 Pleos 음성 인식(ON_DEVICE)에 넣는 방식입니다. 에뮬레이터에는 PC 마이크가 연결돼 있지 않기 때문입니다. 파일은 `PLEOS_VOICE_DIR`(기본 `~/Android/voice`)에 두고 레포에는 넣지 않습니다. 파일이 없거나 6초 안에 인식 결과가 없으면 버튼이 뜻하는 응답을 대신 적용하고 화면에 그렇게 알립니다.
 - 녹음은 브라우저 마이크 권한이 필요합니다. `127.0.0.1`은 브라우저가 안전한 주소로 취급해서 https 없이 녹음됩니다. 다른 기기(휴대폰)에서 접속하려면 https가 필요해서 이번 범위에서는 뺐습니다.
 - 녹음은 실행기 메모리에만 둡니다(파일당 2MB, 최근 20개). 실행기를 끄면 사라집니다.
 - 실행기는 `127.0.0.1`·`localhost`·`10.0.2.2`(에뮬레이터에서 본 PC) 주소로 온 요청만 받고, 다른 웹사이트가 보낸 요청(`Origin`이 다른 POST)은 거부합니다. 브라우저로 아무 사이트나 열어 둔 상태에서 그 사이트가 차를 조작하지 못하게 하려는 것입니다.
 - 주행 중에는 시나리오 실행처럼 다른 조작이 막힙니다(「정차」만 가능).
 
-자동 시연·녹화: `record_family_demo.cjs`가 위 흐름을 실제 에뮬레이터로 돌리고 실행기 화면을 녹화합니다(크롬 가짜 마이크라 녹음은 "삐" 소리입니다). 2026-10-28 녹화본은 `docs/plans/submission/가족석_가족앱_시연_초안.mp4`(43초)입니다.
+자동 시연·녹화: `record_family_demo.cjs`가 위 흐름을 실제 에뮬레이터로 돌리고 실행기 화면을 녹화합니다. 엄마의 응원 녹음은 `cheer_mom.wav`(공개 TTS 목소리)를 크롬 가짜 마이크로 넣고, 에뮬레이터 소리(차 음성·응원 재생)는 PC 기본 출력의 모니터를 `parecord`로 녹음해 `family_demo.mp4`에 합칩니다(ffmpeg 필요). 2026-10-29 녹화본은 `docs/plans/submission/가족석_가족앱_시연_음성.mp4`(42초, 소리 포함)입니다.
 
 ```bash
 PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> node record_family_demo.cjs ~/Android/demo_video/family
@@ -89,11 +90,11 @@ PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> node record_fam
 
 | 실제 | 시나리오가 대신 함 | 대역 |
 |---|---|---|
-| Pleos 에뮬레이터 v2.1.0, 가족석 APK, Vehicle SDK 신호, AAOS 속도, Pleos TTS, 주행 중 Pleos의 화면 가림, 가족 앱의 녹음과 차에서의 재생 | Virtual Console 조작, (시나리오 실행 시) 가족의 픽업 요청·응원과 운전자의 "응" | 가족 서버(실행기가 Firebase 대신), 가족 앱은 PC 브라우저에서 실행(실제 휴대폰 아님), 시나리오 응원(문구를 TTS로 읽음), 내비 경유지·ETA(고정 값) |
+| Pleos 에뮬레이터 v2.1.0, 현대 패밀리 카신저 APK, Vehicle SDK 신호, Pleos TTS, **Pleos 음성 인식(STT)**, **NaviHelper 내비 경로·경유지**, 주행 중 Pleos의 화면 가림, 가족 앱의 녹음과 차에서의 재생 | Virtual Console 조작, (시나리오 실행 시) 가족의 픽업 요청·응원 | 가족 서버(실행기가 Firebase 대신), 가족 앱은 PC 브라우저에서 실행(실제 휴대폰 아님), 운전자 목소리(공개 TTS 녹음을 마이크 대신 주입), 시나리오 응원(문구를 TTS로 읽음), 가족방의 도착 예정 시간(시나리오 값. 실제 내비 소요 시간은 차 화면 메모로 표시) |
 
 ## 에뮬레이터에서 알게 된 제약
 
-- **주행 중(D)에는 Pleos가 서드파티 앱 화면을 "주행 중에는 사용할 수 없습니다"로 덮습니다.** `distractionOptimized` 선언이나 설치 출처 지정으로는 풀리지 않았습니다(App Market 승인 영역으로 보임). 가족석은 이때 음성으로만 안내하고, 가족 알림은 계속 보냅니다. 기획서의 "주행 중 음성만" 설계와 같습니다.
+- **주행 중(D)에는 Pleos가 서드파티 앱 화면을 "주행 중에는 사용할 수 없습니다"로 덮습니다.** `distractionOptimized` 선언이나 설치 출처 지정으로는 풀리지 않았습니다(App Market 승인 영역으로 보임). 현대 패밀리 카신저는 이때 음성으로만 안내하고, 가족 알림은 계속 보냅니다. 기획서의 "주행 중 음성만" 설계와 같습니다.
 - **Virtual Console 속도 명령은 브라우저 세션 신호(`POST /browser/session`, 3초 시한)가 있어야 받아들여집니다.** 실행기가 1초마다 보냅니다.
 - **착석 값이 SDK에서 반대로 들어옵니다.** 차량 앱의 `SEAT_OCCUPANCY_INVERTED`가 보정합니다.
 - **좌석별 벨트**는 Virtual Console에 조작 기능이 없어 시나리오에 넣지 않았습니다.
@@ -101,6 +102,9 @@ PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> node record_fam
 - **에뮬레이터는 `setsid -f`로 실행기와 분리해 띄웁니다.** 실행기의 자식 프로세스로 두면 실행기를 끌 때 에뮬레이터도 같이 꺼졌습니다(2026-10-28 확인).
 - **그래픽은 `-gpu host`(인텔 내장 그래픽)를 씁니다.** 종전 `swiftshader_indirect`(CPU로 그래픽을 흉내 냄)는 이 PC에서 에뮬레이터가 2~36분 만에 스스로 충돌했습니다(`/var/log/apport.log`의 signal 11). 같은 조건 30분 반복 실행 비교: swiftshader 19분에 충돌, host 30분·시나리오 50회 충돌 0회(2026-10-28). host는 메모리도 약 7GB → 5GB로 줄었습니다. 다른 PC에서 host가 안 되면 `PLEOS_GPU=swiftshader_indirect ./start_demo.sh`.
 - **에뮬레이터는 브라우저 녹음 형식(WebM·Opus)을 그대로 재생합니다**(Android 14). 변환이 필요 없습니다.
+- **NaviHelper 요청은 내비 화면이 앞에 있을 때만 처리됩니다.** 뒤에 있으면 내비 앱이 `navi not ready`로 버립니다(2026-10-29 실측). 그래서 차량 앱은 경유지를 넣기 전에 내비를 앞으로 띄웁니다. 같은 이유로 「처음 상태로」의 내비 경로 취소는 내비가 앞에 있을 때만 적용됩니다.
+- **에뮬레이터 내비의 현재 위치는 판교(수정구 시흥동)로 고정**이라 데모 장소 좌표도 판교 근처로 두었습니다(`scenarios.py`의 `PLACES`).
+- **Pleos 음성 인식은 ON_DEVICE 모드로 앱 등록 없이 동작**하고, `sendAudio`로 녹음을 넣을 수 있습니다. 쉼표에서 끊긴 앞 조각("아니")은 중간 결과로만 오므로 중간 결과까지 보고 판정합니다.
 - **부팅 직후 Virtual Console은 세션 신호를 받기 전까지 차량 값을 `null`로 줍니다**(`bridge_ready:false`). 실행기 상단 칩의 차량 값은 첫 시나리오를 실행하면 채워집니다.
 
 ## 시연 영상 녹화
@@ -131,15 +135,15 @@ ffmpeg -y -f concat -safe 0 -i list.txt -c copy gajokseok_demo_all.mp4
 | `scenario/runner.py` | 시나리오 실행·중지·상태 |
 | `scenario/family.py` | 가족 서버 대역 (차량 앱 명령함 + 가족방 피드 + 녹음 보관함) |
 | `scenario/screen.py` | 에뮬레이터 화면 캡처 |
-| `scenario/server.py` | 웹 서버 (`/api/scenarios`·`/api/status`·`/api/run/<id>`·`/api/stop`·`/api/car/event`·`/api/car/inbox`·`/api/family/feed`·`/api/screen`, 가족 앱 `/family`·`/api/family/say`·`/api/family/pickup`·`/api/family/cheer`·`/api/audio/<id>`, 수동 조작 `/api/manual/<동작>`) |
+| `scenario/server.py` | 웹 서버 (`/api/scenarios`·`/api/status`·`/api/run/<id>`·`/api/stop`·`/api/car/event`·`/api/car/inbox`·`/api/family/feed`·`/api/screen`, 가족 앱 `/family`·`/api/family/say`·`/api/family/pickup`·`/api/family/cheer`·`/api/audio/<id>`, 수동 조작 `/api/manual/<동작>`, 운전자 음성 `/api/driver/voice`·`/api/voice/<clip>.pcm`) |
 | `static/index.html` | 실행기 화면 |
 | `static/family.html` | 가족 앱 화면 |
-| `../gajokseok-car/` | 가족석 차량 앱 (Kotlin). 판단 엔진은 `core/Detector.kt` |
+| `../gajokseok-car/` | 현대 패밀리 카신저 차량 앱 (Kotlin). 판단 엔진 `core/Detector.kt`·`core/ReplyIntent.kt`, 음성 인식 `Ears.kt`, 내비 `NaviLink.kt`, 포그라운드 서비스 `GajokService.kt` |
 
 ## 테스트
 
 ```bash
-uv run --no-project --with pytest pytest -q                 # 실행기 (66개, 브라우저 E2E 1개는 아래 환경변수가 있을 때만)
+uv run --no-project --with pytest pytest -q                 # 실행기 (71개, 브라우저 E2E 1개는 아래 환경변수가 있을 때만)
 PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> uv run --no-project --with pytest pytest -q tests/test_family_e2e.py  # 가족 앱 E2E (크롬 가짜 마이크)
-cd ../gajokseok-car && gradle testDebugUnitTest              # 차량 앱 판단 엔진 (20개)
+cd ../gajokseok-car && gradle testDebugUnitTest              # 차량 앱 판단 엔진·음성 판정 (29개)
 ```

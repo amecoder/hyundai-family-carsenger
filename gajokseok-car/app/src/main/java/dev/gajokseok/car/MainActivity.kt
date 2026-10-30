@@ -2,6 +2,7 @@ package dev.gajokseok.car
 
 import android.animation.ValueAnimator
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -37,6 +38,8 @@ class MainActivity : Activity() {
     private lateinit var link: FamilyLink
     private lateinit var voice: Voice
     private lateinit var cheers: CheerPlayer
+    private lateinit var ears: Ears
+    private lateinit var navi: NaviLink
     private val clock = SimpleDateFormat("HH:mm", Locale.KOREA)
 
     private lateinit var home: View
@@ -54,13 +57,15 @@ class MainActivity : Activity() {
     private lateinit var driveLast: TextView
     private lateinit var pickupCard: View
     private lateinit var pickupText: TextView
+    private lateinit var listenHint: TextView
     private lateinit var cheerCard: View
     private lateinit var cheerTitle: TextView
     private lateinit var cheerText: TextView
     private lateinit var cheerMeta: TextView
     private val bars = mutableListOf<View>()
     private var barAnimator: ValueAnimator? = null
-    private var speedKph = 0f
+    /** demo answer applied when the injected clip is not recognised; dropped as soon as the question is settled */
+    private var voiceFallback: Runnable? = null
 
     private val tick = object : Runnable {
         override fun run() {
@@ -76,7 +81,8 @@ class MainActivity : Activity() {
             arrayOf(
                 "pleos.car.permission.CAR_DRIVE", "pleos.car.permission.CAR_DOORS",
                 "pleos.car.permission.CAR_SEATS", "pleos.car.permission.CAR_ENERGY",
-                "android.car.permission.CAR_SPEED", "pleos.car.permission.TTS_SERVICE",
+                "pleos.car.permission.TTS_SERVICE", "pleos.car.permission.STT_SERVICE", "android.permission.RECORD_AUDIO",
+                "pleos.car.permission.NAVI_ROUTE", "pleos.car.permission.NAVI_ROUTE_SEARCH",
             ),
             1,
         )
@@ -89,8 +95,12 @@ class MainActivity : Activity() {
     }
 
     private fun startSources() {
+        // keeps family commands flowing while the navigation map covers this screen
+        startForegroundService(Intent(this, GajokService::class.java))
         voice = Voice(this) { ok, err -> main.post { if (!ok) showNote("음성 합성(TTS)을 쓸 수 없어 화면 문구로만 안내합니다 ($err)") } }
         cheers = CheerPlayer(voice, onStart = ::showCheer, onIdle = ::hideCheer)
+        ears = Ears(this, onReply = { accept, text -> showNote("운전자 음성 \"$text\" → ${if (accept) "추가" else "취소"}"); link.post("note", "운전자 음성 인식: \"$text\""); handleCommand(Command.DriverReply(accept)) }, onHeard = { listenHint.text = "🎙 들은 말: \"$it\"" })
+        navi = NaviLink(this) { text -> showNote(text); link.post("note", text) }
         link = FamilyLink(
             onCommand = ::handleCommand,
             onConnection = { ok -> linkValue.text = if (ok) "● 가족 서버 연결됨" else "○ 가족 서버 연결 안 됨"; linkValue.setTextColor(if (ok) Palette.green else Palette.red) },
@@ -106,6 +116,9 @@ class MainActivity : Activity() {
         if (::vehicle.isInitialized) vehicle.stop()
         if (::link.isInitialized) link.stop()
         if (::cheers.isInitialized) cheers.stop()
+        if (::ears.isInitialized) ears.shutdown()
+        if (::navi.isInitialized) navi.release()
+        stopService(Intent(this, GajokService::class.java))
         if (::voice.isInitialized) voice.shutdown()
         super.onDestroy()
     }
@@ -113,16 +126,16 @@ class MainActivity : Activity() {
     // ---- input ----
 
     private fun handleSignal(s: Signal) {
-        if (s is Signal.Speed) speedKph = s.kph
         apply(detector.onSignal(s, SystemClock.elapsedRealtime()))
         refreshStatus()
     }
 
     private fun handleCommand(c: Command) {
         when (c) {
-            is Command.PickupRequest -> addBubble(c.by, "데리러 와 · ${c.place}", fromCar = false)
+            is Command.PickupRequest -> { stopListening(); addBubble(c.by, "데리러 와 · ${c.place}", fromCar = false) }
             is Command.Cheer -> addBubble(c.from, "🎙 응원 ${if (c.audioUrl != null) "녹음" else "음성"} \"${c.text}\"", fromCar = false)
-            Command.Reset -> timeline.removeAllViews()
+            Command.Reset -> { timeline.removeAllViews(); stopListening(); navi.clear() }
+            is Command.DriverVoice -> hearDriverClip(c)
             else -> Unit
         }
         apply(detector.onCommand(c, SystemClock.elapsedRealtime()))
@@ -138,13 +151,39 @@ class MainActivity : Activity() {
                 is Effect.FamilyMessage -> { addBubble("차", e.text, fromCar = true); driveLast.text = "가족에게 보냄: ${e.text}"; link.post("message", e.text) }
                 is Effect.Speak -> { voice.say(e.text); link.post("speak", e.text) }
                 is Effect.PlayCheer -> cheers.play(e)
-                Effect.StopVoice -> { voice.stop(); cheers.stop(); hideCheer() }
+                Effect.StopVoice -> { voice.stop(); cheers.stop(); hideCheer(); stopListening() }
+                Effect.StopListening -> stopListening()
+                Effect.ListenForReply -> { listenHint.text = "'응' 또는 '아니'라고 말해 주세요"; voice.afterSpeech { listenHint.text = "🎙 듣는 중 · '응' 또는 '아니'"; ears.listen() } }
+                is Effect.AddWaypoint -> navi.addPickup(e.place, e.lat, e.lon)
                 is Effect.ShowScreen -> show(e.screen)
                 is Effect.Note -> { showNote(e.text); link.post("note", e.text) }
                 is Effect.Banner -> { driveBanner.text = e.text ?: ""; driveBanner.gone(e.text == null) }
             }
         }
         refreshStatus()
+    }
+
+    /** Demo: the relay sends a recorded driver answer; if recognition hears nothing, its intended answer is applied. */
+    private fun hearDriverClip(c: Command.DriverVoice) {
+        Thread {
+            val pcm = link.fetch(c.clipUrl)
+            main.post {
+                val fed = pcm != null && ears.inject(pcm)
+                voiceFallback?.let { main.removeCallbacks(it) }
+                voiceFallback = Runnable {
+                    voiceFallback = null
+                    if (detector.snapshot().pickup != PickupPhase.REQUESTED) return@Runnable
+                    showNote(if (fed) "음성 인식 결과 없음 → 시연 응답 적용" else "음성 파일·인식 사용 불가 → 시연 응답 적용")
+                    handleCommand(Command.DriverReply(c.fallbackAccept))
+                }.also { main.postDelayed(it, if (fed) 6_000 else 0) }
+            }
+        }.start()
+    }
+
+    private fun stopListening() {
+        ears.cancel()
+        voiceFallback?.let { main.removeCallbacks(it) }
+        voiceFallback = null
     }
 
     private fun show(screen: Screen) {
@@ -192,9 +231,9 @@ class MainActivity : Activity() {
     private fun refreshStatus() {
         val s = detector.snapshot()
         val moving = s.gear == GearState.DRIVE
-        statusPill.text = if (moving) "● 주행 중 · ${speedKph.toInt()} km/h" else "● 정차 중 · 기어 ${gearLabel(s.gear)}"
+        statusPill.text = if (moving) "● 주행 중" else "● 정차 중 · 기어 ${gearLabel(s.gear)}"
         statusPill.setTextColor(if (moving) Palette.amber else Palette.green)
-        stateValue.text = if (moving) "주행 중 · ${speedKph.toInt()} km/h" else "정차 중 · 기어 ${gearLabel(s.gear)}"
+        stateValue.text = if (moving) "주행 중 · 기어 D" else "정차 중 · 기어 ${gearLabel(s.gear)}"
         tripValue.text = s.trip?.let { "${it.destination} · 약 ${it.etaMin}분" } ?: "설정된 목적지 없음"
         pickupValue.text = when (s.pickup) {
             PickupPhase.NONE -> "요청 없음"
@@ -222,7 +261,7 @@ class MainActivity : Activity() {
             background = rounded(if (fromCar) Palette.amberSoft else Palette.tealSoft, dp(16).toFloat())
             setPadding(dp(18), dp(12), dp(18), dp(12))
         }, lp(WRAP_CONTENT))
-        col.addView(label("${if (fromCar) "가족석 차량 알림" else sender} · ${clock.format(Date())}", 14f, Palette.muted).apply {
+        col.addView(label("${if (fromCar) "현대 패밀리 카신저 차량 알림" else sender} · ${clock.format(Date())}", 14f, Palette.muted).apply {
             setPadding(dp(6), dp(4), 0, 0)
         })
         r.addView(col, lp(0, WRAP_CONTENT, 1f))
@@ -258,7 +297,7 @@ class MainActivity : Activity() {
         val page = column(padding = 40, gap = 24)
         val header = row()
         val titles = column()
-        titles.addView(label("가족석 · 가족방", 16f, Palette.muted))
+        titles.addView(label("현대 패밀리 카신저 · 가족방", 16f, Palette.muted))
         titles.addView(label("우리 가족, 오늘도 함께", 34f, bold = true))
         header.addView(titles, lp(0, WRAP_CONTENT, 1f))
         statusPill = label("● 정차 중", 18f, Palette.green).apply {
@@ -316,7 +355,7 @@ class MainActivity : Activity() {
 
     private fun buildDriving(): View {
         val page = column(padding = 60, gap = 26).apply { gravity = Gravity.CENTER }
-        page.addView(label("가족석", 20f, Palette.muted).apply { gravity = Gravity.CENTER })
+        page.addView(label("현대 패밀리 카신저", 20f, Palette.muted).apply { gravity = Gravity.CENTER })
         page.addView(label("주행 중에는 음성으로만 안내합니다", 36f, bold = true).apply { gravity = Gravity.CENTER })
         driveBanner = label("", 24f, Palette.amberInk).apply {
             gravity = Gravity.CENTER
@@ -335,7 +374,8 @@ class MainActivity : Activity() {
         card.addView(label("🎙 픽업 요청", 18f, Palette.amber, bold = true))
         pickupText = label("", 30f, bold = true)
         card.addView(pickupText)
-        card.addView(label("'응' 또는 '아니'라고 말해 주세요", 18f, Palette.muted))
+        listenHint = label("'응' 또는 '아니'라고 말해 주세요", 18f, Palette.muted)
+        card.addView(listenHint)
         val buttons = row(gap = 16)
         buttons.addView(button("추가", Palette.amber, Color.parseColor("#1B1B1B")) { handleCommand(Command.DriverReply(true)) }, lp(0, dp(76), 1f))
         buttons.addView(button("취소", Palette.panel, Palette.ink) { handleCommand(Command.DriverReply(false)) }, lp(0, dp(76), 1f))

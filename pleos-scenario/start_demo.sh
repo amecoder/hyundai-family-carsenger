@@ -60,10 +60,10 @@ APK="$CAR_DIR/app/build/outputs/apk/debug/app-debug.apk"
 GRADLE="${GRADLE:-$HOME/Android/gradle/gradle-9.8.2/bin/gradle}"
 if [[ ! -f "$APK" || -n "$(find "$CAR_DIR/app/src" "$CAR_DIR/app/build.gradle.kts" -newer "$APK" -type f -print -quit)" ]]; then
   [[ -x "$GRADLE" ]] || { echo "Gradle을 찾을 수 없음: $GRADLE (GRADLE 환경변수로 지정)" >&2; exit 1; }
-  echo "가족석 차량 앱 빌드 중… (처음에는 몇 분 걸립니다)"
+  echo "현대 패밀리 카신저 차량 앱 빌드 중… (처음에는 몇 분 걸립니다)"
   (cd "$CAR_DIR" && ANDROID_HOME="$ANDROID_HOME" "$GRADLE" --no-daemon -q assembleDebug)
 fi
-echo "가족석 차량 앱 설치·실행"
+echo "현대 패밀리 카신저 차량 앱 설치·실행"
 "$ADB" install -r -g "$APK" >/dev/null
 "$ADB" shell pm grant dev.gajokseok.car android.car.permission.CAR_SPEED 2>/dev/null || true
 "$ADB" shell am start -n dev.gajokseok.car/.MainActivity >/dev/null

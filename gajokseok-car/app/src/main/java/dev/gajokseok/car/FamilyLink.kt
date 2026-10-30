@@ -56,6 +56,12 @@ class FamilyLink(
         }
     }
 
+    /** Downloads a small file from the relay (driver voice clips); null on failure. */
+    fun fetch(url: String): ByteArray? = runCatching {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply { connectTimeout = 2000; readTimeout = 4000 }
+        conn.inputStream.use { it.readBytes() }.also { conn.disconnect() }
+    }.onFailure { Log.w(TAG, "fetch $url failed: ${it.message}") }.getOrNull()
+
     private fun poll() {
         try {
             val conn = (URL("$baseUrl/api/car/inbox?after=$lastSeq").openConnection() as HttpURLConnection).apply {
@@ -94,7 +100,11 @@ class FamilyLink(
         "reset" -> Command.Reset
         "set_trip" -> Command.SetTrip(o.getString("destination"), o.getInt("eta_min"), o.getString("driver"), o.getString("child"))
         "set_rest_threshold" -> Command.SetRestThreshold(o.getInt("seconds"))
-        "pickup_request" -> Command.PickupRequest(o.getString("by"), o.getString("place"), o.getInt("eta_min"))
+        "pickup_request" -> Command.PickupRequest(
+            o.getString("by"), o.getString("place"), o.getInt("eta_min"),
+            lat = o.optDouble("lat").takeUnless { it.isNaN() }, lon = o.optDouble("lon").takeUnless { it.isNaN() },
+        )
+        "driver_voice" -> Command.DriverVoice("$baseUrl/api/voice/${o.getString("clip")}.pcm", o.optBoolean("fallback_accept", true))
         "driver_reply" -> Command.DriverReply(o.getBoolean("accept"))
         "cheer" -> Command.Cheer(
             o.getString("from"), o.getString("text"),

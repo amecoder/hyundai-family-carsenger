@@ -5,6 +5,7 @@ import threading
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -31,8 +32,9 @@ class FakeConsole(RecordingClient):
         }
 
 
-def _serve(console: FakeConsole, grabber: ScreenGrabber | None = None) -> Iterator[str]:
-    srv = make_server(console, host="127.0.0.1", port=0, sleep=lambda _: threading.Event().wait(0.005), grabber=grabber)
+def _serve(console: FakeConsole, grabber: ScreenGrabber | None = None, voice_dir: Path | None = None) -> Iterator[str]:
+    srv = make_server(console, host="127.0.0.1", port=0, sleep=lambda _: threading.Event().wait(0.005), grabber=grabber,
+                      voice_dir=voice_dir or Path("/nonexistent-voice-dir"))
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     yield f"http://127.0.0.1:{srv.server_address[1]}"
@@ -65,7 +67,7 @@ def post(url: str, body: dict | None = None) -> tuple[int, Any]:
 def test_index_page_is_served_in_korean(base: str) -> None:
     status, html = get(base + "/")
     assert status == 200
-    assert "가족석 시나리오 실행기" in html
+    assert "현대 패밀리 카신저 시나리오 실행기" in html
 
 
 def test_scenarios_list_includes_steps(base: str) -> None:
@@ -337,3 +339,38 @@ def test_bad_content_length_is_rejected(base: str) -> None:
     for length in ("-1", "abc"):
         status = _raw_request(base, path, {"Host": host, "Content-Type": "audio/webm", "Content-Length": length})
         assert status == 400
+
+
+def test_family_pickup_to_a_known_place_carries_its_coordinates(base: str) -> None:
+    from scenario.scenarios import PLACES
+
+    post(base + "/api/family/pickup", {"sender": "민지", "place": "○○수학학원 앞"})
+    _, inbox = get(base + "/api/car/inbox?after=0")
+    cmd = inbox["commands"][-1]
+    assert (cmd["lat"], cmd["lon"]) == PLACES["○○수학학원 앞"]
+
+
+def test_family_pickup_to_a_typed_place_has_no_coordinates(base: str) -> None:
+    post(base + "/api/family/pickup", {"sender": "민지", "place": "편의점 앞"})
+    _, inbox = get(base + "/api/car/inbox?after=0")
+    assert "lat" not in inbox["commands"][-1]
+
+
+def test_driver_voice_clip_is_served_from_the_voice_folder(tmp_path: Path) -> None:
+    (tmp_path / "driver_yes.pcm").write_bytes(b"\x01\x02" * 10)
+    for base in _serve(FakeConsole(), voice_dir=tmp_path):
+        with urllib.request.urlopen(base + "/api/voice/driver_yes.pcm", timeout=5) as r:
+            assert r.read() == b"\x01\x02" * 10
+        for bad in ("driver_no.pcm", "..%2Fsecret.pcm", "driver_yes.wav"):
+            with pytest.raises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(base + "/api/voice/" + bad, timeout=5)
+            assert e.value.code == 404
+
+
+def test_driver_voice_command_reaches_the_car(base: str) -> None:
+    status, _ = post(base + "/api/driver/voice", {"clip": "driver_no"})
+    assert status == 200
+    _, inbox = get(base + "/api/car/inbox?after=0")
+    cmd = inbox["commands"][-1]
+    assert (cmd["type"], cmd["clip"], cmd["fallback_accept"]) == ("driver_voice", "driver_no", False)
+    assert post(base + "/api/driver/voice", {"clip": "../x"})[0] == 400

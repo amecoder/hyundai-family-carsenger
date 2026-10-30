@@ -206,6 +206,67 @@ class DetectorTest {
     }
 
     @Test
+    fun acceptingPickupWithCoordinatesAddsNavigationWaypoint() {
+        drive()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12, lat = 37.3947, lon = 127.1112))
+        val e = cmd(Command.DriverReply(accept = true))
+        assertTrue(Effect.AddWaypoint("○○수학학원 앞", 37.3947, 127.1112) in e)
+    }
+
+    @Test
+    fun acceptingPickupWithoutCoordinatesOnlySpeaks() {
+        drive()
+        cmd(Command.PickupRequest(by = "민지", place = "직접 쓴 장소", etaMin = 12))
+        val e = cmd(Command.DriverReply(accept = true))
+        assertTrue(e.none { it is Effect.AddWaypoint })
+        assertEquals(PickupPhase.ACCEPTED, d.snapshot().pickup)
+    }
+
+    @Test
+    fun pickupRequestListensForTheDriversSpokenReply() {
+        drive()
+        val e = cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        assertTrue(Effect.ListenForReply in e)
+    }
+
+    @Test
+    fun noReplyWithinTheTimeoutDeclinesThePickup() {
+        drive()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        now = 11_000
+        assertTrue(messages(d.onTick(now)).isEmpty())
+        now = 12_000
+        val e = d.onTick(now)
+        assertEquals(listOf("지금은 들를 수 없어요. 조금만 기다려 줘"), messages(e))
+        assertTrue(e.any { it is Effect.Speak && it.text.contains("답이 없어") })
+        assertEquals(PickupPhase.NONE, d.snapshot().pickup)
+        assertTrue(cmd(Command.DriverReply(accept = true)).isEmpty())
+    }
+
+    @Test
+    fun answeredPickupIsNotTimedOutLater() {
+        drive()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        now = 3_000
+        cmd(Command.DriverReply(accept = true))
+        now = 20_000
+        assertTrue(messages(d.onTick(now)).isEmpty())
+        assertEquals(PickupPhase.ACCEPTED, d.snapshot().pickup)
+    }
+
+    @Test
+    fun anyAnswerOrTimeoutStopsListening() {
+        drive()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        assertTrue(Effect.StopListening in cmd(Command.DriverReply(accept = true)))
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        assertTrue(Effect.StopListening in cmd(Command.DriverReply(accept = false)))
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        now = 12_000
+        assertTrue(Effect.StopListening in d.onTick(now))
+    }
+
+    @Test
     fun resetClearsTripAndPickup() {
         drive(); acceptPickup()
         cmd(Command.Reset)

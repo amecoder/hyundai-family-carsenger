@@ -20,10 +20,13 @@ sealed interface Command {
     data object Reset : Command
     data class SetTrip(val destination: String, val etaMin: Int, val driver: String, val child: String) : Command
     data class SetRestThreshold(val seconds: Int) : Command
-    data class PickupRequest(val by: String, val place: String, val etaMin: Int) : Command
+    /** lat/lon = the place's coordinates when the family picked a known place; free-typed places have none. */
+    data class PickupRequest(val by: String, val place: String, val etaMin: Int, val lat: Double? = null, val lon: Double? = null) : Command
     data class DriverReply(val accept: Boolean) : Command
     /** audioUrl = the family member's recorded clip; null means only the text is available (read by TTS). */
     data class Cheer(val from: String, val text: String, val audioUrl: String? = null, val durationMs: Long = 0) : Command
+    /** Demo stand-in for the driver's voice: a clip fed to speech recognition; fallbackAccept applies if nothing is recognised. */
+    data class DriverVoice(val clipUrl: String, val fallbackAccept: Boolean) : Command
 }
 
 sealed interface Effect {
@@ -34,10 +37,15 @@ sealed interface Effect {
     data class ShowScreen(val screen: Screen) : Effect
     data class Note(val text: String) : Effect
     data class Banner(val text: String?) : Effect
+    /** Start listening for the driver's "응/아니" once the question has been spoken. */
+    data object ListenForReply : Effect
+    /** The question is settled (answered or timed out): close the microphone and drop any pending demo answer. */
+    data object StopListening : Effect
+    data class AddWaypoint(val place: String, val lat: Double, val lon: Double) : Effect
 }
 
 data class Trip(val destination: String, val etaMin: Int, val driver: String, val child: String)
-data class Pickup(val by: String, val place: String, val etaMin: Int)
+data class Pickup(val by: String, val place: String, val etaMin: Int, val lat: Double? = null, val lon: Double? = null)
 
 data class Snapshot(
     val gear: GearState,
@@ -53,6 +61,8 @@ data class Snapshot(
 class Detector(
     private val maxCheersPerStop: Int = 3,
     private val chargeTargetPct: Float = 80f,
+    /** question (~4 s) + the plan's 8 s without an answer */
+    private val replyTimeoutMs: Long = 12_000,
 ) {
     private var gear = GearState.UNKNOWN
     private var speedKph = 0f
@@ -60,6 +70,7 @@ class Detector(
     private var departures = 0
     private var phase = PickupPhase.NONE
     private var pickup: Pickup? = null
+    private var pickupAskedAtMs: Long? = null
     private val pendingCheers = ArrayDeque<Command.Cheer>()
     private var drivingSinceMs: Long? = null
     private var restThresholdMs = 2 * 60 * 60 * 1000L
@@ -83,12 +94,17 @@ class Detector(
         Command.Reset -> { resetAll(); listOf(Effect.StopVoice, Effect.Banner(null), Effect.ShowScreen(if (gear == GearState.DRIVE) Screen.DRIVING else Screen.HOME)) }
         is Command.SetTrip -> { trip = Trip(command.destination, command.etaMin, command.driver, command.child); emptyList() }
         is Command.SetRestThreshold -> { restThresholdMs = command.seconds * 1000L; emptyList() }
-        is Command.PickupRequest -> onPickupRequest(command)
+        is Command.PickupRequest -> onPickupRequest(command, nowMs)
         is Command.DriverReply -> onDriverReply(command.accept)
         is Command.Cheer -> onCheer(command)
+        is Command.DriverVoice -> emptyList()
     }
 
     fun onTick(nowMs: Long): List<Effect> {
+        val asked = pickupAskedAtMs
+        if (phase == PickupPhase.REQUESTED && asked != null && nowMs - asked >= replyTimeoutMs) {
+            return decline("답이 없어서 경유지를 추가하지 않았어요. 가족에게 전할게요.")
+        }
         val since = drivingSinceMs ?: return emptyList()
         if (gear != GearState.DRIVE || restHintGiven || nowMs - since < restThresholdMs) return emptyList()
         restHintGiven = true
@@ -173,32 +189,42 @@ class Detector(
         return if (gear == GearState.PARK) playPendingCheers() else listOf(Effect.Note("${c.from}의 응원 음성 도착 · 멈추면 재생"))
     }
 
-    private fun onPickupRequest(c: Command.PickupRequest): List<Effect> {
-        pickup = Pickup(c.by, c.place, c.etaMin)
+    private fun onPickupRequest(c: Command.PickupRequest, nowMs: Long): List<Effect> {
+        pickup = Pickup(c.by, c.place, c.etaMin, c.lat, c.lon)
         phase = PickupPhase.REQUESTED
+        pickupAskedAtMs = nowMs
         return listOf(
             Effect.ShowScreen(Screen.PICKUP_PROMPT),
             Effect.Speak("${c.by}가 ${c.place}에서 픽업을 요청했어요. 경유지로 추가할까요?"),
+            Effect.ListenForReply,
         )
+    }
+
+    private fun decline(spoken: String): List<Effect> {
+        val back = Effect.ShowScreen(if (gear == GearState.DRIVE) Screen.DRIVING else Screen.HOME)
+        phase = PickupPhase.NONE
+        pickup = null
+        pickupAskedAtMs = null
+        return listOf(Effect.StopListening, back, Effect.Speak(spoken), Effect.FamilyMessage("지금은 들를 수 없어요. 조금만 기다려 줘"))
     }
 
     private fun onDriverReply(accept: Boolean): List<Effect> {
         val p = pickup
         if (phase != PickupPhase.REQUESTED || p == null) return emptyList()
+        if (!accept) return decline("알겠어요. 가족에게 전할게요.")
         val back = Effect.ShowScreen(if (gear == GearState.DRIVE) Screen.DRIVING else Screen.HOME)
-        if (!accept) {
-            phase = PickupPhase.NONE
-            pickup = null
-            return listOf(back, Effect.Speak("알겠어요. 가족에게 전할게요."), Effect.FamilyMessage("지금은 들를 수 없어요. 조금만 기다려 줘"))
-        }
         phase = PickupPhase.ACCEPTED
+        pickupAskedAtMs = null
         val driver = trip?.driver ?: "운전자"
-        return listOf(
+        val out = mutableListOf(
+            Effect.StopListening,
             back,
             Effect.Speak("${p.place}을 경유지로 추가했어요."),
             Effect.FamilyMessage("${driver}가 가는 중, ${p.etaMin}분 뒤 ${p.place} 도착"),
             Effect.Banner("경유지: ${p.place} · ${p.etaMin}분"),
         )
+        if (p.lat != null && p.lon != null) out += Effect.AddWaypoint(p.place, p.lat, p.lon)
+        return out
     }
 
     private fun onDoor(side: Side, open: Boolean): List<Effect> {
@@ -239,6 +265,7 @@ class Detector(
         departures = 0
         phase = PickupPhase.NONE
         pickup = null
+        pickupAskedAtMs = null
         pendingCheers.clear()
         drivingSinceMs = null
         restHintGiven = false

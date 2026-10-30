@@ -153,9 +153,26 @@ class FamilySays:
             self.command.run(v, sleep, should_stop)
 
 
+# demo places near Pangyo: the emulator navigation always starts at 수정구 시흥동 (127.0947, 37.4127)
+PLACES: dict[str, tuple[float, float]] = {
+    "○○수학학원 앞": (37.3947, 127.1112),
+    "○○도서관 앞": (37.3825, 127.1189),
+    "○○역 2번 출구": (37.4020, 127.1086),
+    "집": (37.3595, 127.1052),
+}
+
+
+def pickup_fields(by: str, place: str, eta_min: int) -> tuple[tuple[str, object], ...]:
+    """pickup_request payload; known places get coordinates so the car can add a navigation waypoint."""
+    fields: tuple[tuple[str, object], ...] = (("by", by), ("place", place), ("eta_min", eta_min))
+    if place in PLACES:
+        lat, lon = PLACES[place]
+        fields += (("lat", lat), ("lon", lon))
+    return fields
+
+
 def pickup_request(by: str, place: str, eta_min: int) -> FamilySays:
-    return FamilySays(by, f"아빠 나 끝났어! 데리러 와 · {place}",
-                      CarCommand("pickup_request", (("by", by), ("place", place), ("eta_min", eta_min))))
+    return FamilySays(by, f"아빠 나 끝났어! 데리러 와 · {place}", CarCommand("pickup_request", pickup_fields(by, place, eta_min)))
 
 
 def cheer(sender: str, text: str) -> FamilySays:
@@ -163,7 +180,8 @@ def cheer(sender: str, text: str) -> FamilySays:
 
 
 def driver_says(accept: bool) -> CarCommand:
-    return CarCommand("driver_reply", (("accept", accept),))
+    """The driver answers out loud: the car runs a recorded answer through speech recognition."""
+    return CarCommand("driver_voice", (("clip", "driver_yes" if accept else "driver_no"), ("fallback_accept", accept)))
 
 
 Action = Gear | Door | Lock | Seat | Soc | Drive | Cruise | Stop | Wait | CarCommand | FamilySays

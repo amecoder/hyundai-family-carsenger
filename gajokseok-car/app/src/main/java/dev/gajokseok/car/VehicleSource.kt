@@ -10,10 +10,6 @@ import ai.pleos.playground.vehicle.listener.DoorPositionListener
 import ai.pleos.playground.vehicle.listener.EvBatteryStateOfChargeListener
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.SeatOccupancyListener
-import android.car.Car
-import android.car.VehiclePropertyIds
-import android.car.hardware.CarPropertyValue
-import android.car.hardware.property.CarPropertyManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -30,11 +26,10 @@ private const val TAG = "GajokVehicle"
  */
 private const val SEAT_OCCUPANCY_INVERTED = true
 
-/** Bridges Pleos Vehicle SDK + AAOS car properties to [Signal]s, always delivered on the main thread. */
+/** Bridges Pleos Vehicle SDK listeners to [Signal]s, always delivered on the main thread. */
 class VehicleSource(private val context: Context, private val onSignal: (Signal) -> Unit, private val onError: (String) -> Unit) {
     private val main = Handler(Looper.getMainLooper())
     private var vehicle: Vehicle? = null
-    private var car: Car? = null
 
     private fun emit(s: Signal) = main.post { onSignal(s) }
 
@@ -80,19 +75,6 @@ class VehicleSource(private val context: Context, private val onSignal: (Signal)
                 override fun onEvBatteryStateOfChargeUpdated(p0: Int?) { p0?.let { emit(Signal.Battery(it.toFloat())) } }
             })
         }
-        guard("speed") { startSpeed() }
-    }
-
-    private fun startSpeed() {
-        val c = Car.createCar(context)
-        car = c
-        val pm = c.getCarManager(Car.PROPERTY_SERVICE) as CarPropertyManager
-        pm.registerCallback(object : CarPropertyManager.CarPropertyEventCallback {
-            override fun onChangeEvent(value: CarPropertyValue<*>) {
-                (value.value as? Float)?.let { emit(Signal.Speed(it * 3.6f)) }
-            }
-            override fun onErrorEvent(propId: Int, zone: Int) { Log.e(TAG, "speed error $propId") }
-        }, VehiclePropertyIds.PERF_VEHICLE_SPEED, CarPropertyManager.SENSOR_RATE_NORMAL)
     }
 
     private fun map(g: VehicleGear?): GearState = when (g) {
@@ -104,7 +86,6 @@ class VehicleSource(private val context: Context, private val onSignal: (Signal)
     }
 
     fun stop() {
-        car?.disconnect()
         runCatching { vehicle?.release() }
     }
 }
