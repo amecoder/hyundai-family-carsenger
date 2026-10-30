@@ -1,5 +1,7 @@
 package dev.gajokseok.car.core
 
+import kotlin.math.abs
+
 // Pure decision engine for 가족석: vehicle signals + family commands in, effects out. No Android types here.
 
 enum class GearState { PARK, DRIVE, REVERSE, NEUTRAL, UNKNOWN }
@@ -91,6 +93,7 @@ class Detector(
     private var pickupAskedAtMs: Long? = null
     private var cheersReceived = 0
     private val recentSpeeds = ArrayDeque<Pair<Long, Float>>()
+    private var lastSpeedAtMs: Long? = null
     private var lastHarshBrakeMs: Long? = null
     private var harshBrakes = 0
     private var speedingSinceMs: Long? = null
@@ -137,7 +140,12 @@ class Detector(
         return out + listOf(Effect.Speak("오래 운전하셨어요. 잠시 쉬어 가세요."), Effect.Banner("연속 운전 ${restThresholdLabel()} · 잠시 쉬어 가세요"))
     }
 
-    private fun onSpeed(kph: Float, atMs: Long, nowMs: Long): List<Effect> {
+    private fun onSpeed(kph: Float, sensorMs: Long, nowMs: Long): List<Effect> {
+        // a sensor clock far from ours (another time base) cannot be compared: use the arrival time instead
+        val atMs = if (abs(sensorMs - nowMs) > CLOCK_SKEW_LIMIT_MS) nowMs else sensorMs
+        val last = lastSpeedAtMs
+        if (last != null && atMs < last) return emptyList() // a late, older sample must not overwrite the current speed
+        lastSpeedAtMs = atMs
         speedKph = kph
         if (gear != GearState.DRIVE) return emptyList()
         recentSpeeds.addLast(atMs to kph)
@@ -147,8 +155,8 @@ class Detector(
         val ref = recentSpeeds.lastOrNull { it.first <= atMs - harshBrakeWindowMs }
         if (ref != null && ref.second >= harshBrakeMinKph) {
             val kphPerS = (ref.second - kph) * 1000f / (atMs - ref.first)
-            val last = lastHarshBrakeMs
-            if (kphPerS >= harshBrakeKphPerS && (last == null || atMs - last >= harshBrakeGapMs)) {
+            val lastHarsh = lastHarshBrakeMs
+            if (kphPerS >= harshBrakeKphPerS && (lastHarsh == null || atMs - lastHarsh >= harshBrakeGapMs)) {
                 lastHarshBrakeMs = atMs
                 harshBrakes += 1
                 // counted the moment the 1 s window first crosses the limit, so the rate here understates the full stop
@@ -167,7 +175,10 @@ class Detector(
             speedingCounted = false
             return emptyList()
         }
-        if (speedKph <= speedingKph) return emptyList()
+        if (speedKph <= speedingKph) {
+            speedingSinceMs = null // the 10 s must be continuous; only dropping under speedingResetKph re-arms counting
+            return emptyList()
+        }
         val since = speedingSinceMs ?: nowMs.also { speedingSinceMs = it }
         if (speedingCounted || nowMs - since < speedingHoldMs) return emptyList()
         speedingCounted = true
@@ -196,18 +207,19 @@ class Detector(
         gear = next
         if (next == prev) return emptyList()
         return when (next) {
-            GearState.DRIVE -> onDepart(nowMs)
+            GearState.DRIVE -> onDepart(nowMs, fromPark = prev == GearState.PARK || prev == GearState.UNKNOWN)
             GearState.PARK -> if (prev == GearState.UNKNOWN) emptyList() else onPark(nowMs)
             else -> emptyList()
         }
     }
 
-    private fun onDepart(nowMs: Long): List<Effect> {
+    private fun onDepart(nowMs: Long, fromPark: Boolean): List<Effect> {
         // a cheer that is playing keeps playing: family voices are allowed while driving
         val out = mutableListOf<Effect>(Effect.ShowScreen(Screen.DRIVING))
         drivingSinceMs = nowMs
         restHintGiven = false
-        resetDriveSafety()
+        // one drive runs from P to P: passing through N or R keeps the risky-moment count and the one alert
+        if (fromPark) resetDriveSafety()
         val t = trip
         if (t != null) {
             departures += 1
@@ -254,6 +266,7 @@ class Detector(
 
     private fun resetDriveSafety() {
         recentSpeeds.clear()
+        lastSpeedAtMs = null
         lastHarshBrakeMs = null
         harshBrakes = 0
         speedingSinceMs = null
@@ -347,6 +360,8 @@ class Detector(
         Side.entries.forEach { doorOpen[it] = false; seatOccupied[it] = false; occupiedWhenDoorOpened[it] = false }
     }
 }
+
+private const val CLOCK_SKEW_LIMIT_MS = 5_000L
 
 /** "집으로", "마트로", "서울로": 로 after a vowel or ㄹ, 으로 after any other final consonant. */
 internal fun towards(place: String): String {

@@ -49,8 +49,12 @@ def load_recording(voice_dir: Path, clip: str) -> tuple[bytes, int] | None:
     if not _CLIP_NAME.fullmatch(clip) or not path.is_file():
         return None
     data = path.read_bytes()
-    with wave.open(str(path), "rb") as w:
-        duration_ms = round(w.getnframes() * 1000 / w.getframerate())
+    try:
+        with wave.open(str(path), "rb") as w:
+            duration_ms = round(w.getnframes() * 1000 / w.getframerate())
+    except (wave.Error, EOFError, ZeroDivisionError) as e:
+        log.warning("voice clip %s is not a readable wav (%s), the car will read the text", path, e)
+        return None
     return data, duration_ms
 
 
@@ -356,7 +360,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _family_quick(self) -> None:
         clip = (self._json_body() or {}).get("clip")
-        if clip not in QUICK_REPLIES:
+        if not isinstance(clip, str) or clip not in QUICK_REPLIES:
             self._send(HTTPStatus.BAD_REQUEST, {"error": f"clip은 {', '.join(QUICK_REPLIES)} 중 하나여야 합니다"})
             return
         sender, text = QUICK_REPLIES[clip]

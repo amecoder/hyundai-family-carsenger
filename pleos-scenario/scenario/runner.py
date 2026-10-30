@@ -26,6 +26,8 @@ class _SpeedMemo:
         self.last_kph = speed_kph
 
     def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):  # no recursion when _vehicle itself is missing (copy, pickle)
+            raise AttributeError(name)
         return getattr(self._vehicle, name)
 
 
@@ -77,6 +79,7 @@ class ScenarioRunner:
 
     def _run(self, scenario: Scenario) -> None:
         done = threading.Event()
+        self._vehicle.last_kph = 0.0  # a stop before this scenario's first speed command must not brake from the last run
         try:
             self._vehicle.keepalive(self._client_id)
             threading.Thread(target=self._keepalive_loop, args=(done,), daemon=True).start()

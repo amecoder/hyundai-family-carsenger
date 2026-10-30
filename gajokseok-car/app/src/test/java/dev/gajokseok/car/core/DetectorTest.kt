@@ -238,6 +238,45 @@ class DetectorTest {
     }
 
     @Test
+    fun dippingBelowTheLimitRestartsTheTenSecondClock() {
+        drive()
+        (0..4).forEach { speed(111f, 1_000L + it * 1_000) }
+        speed(105f, 6_000)
+        (0..4).forEach { speed(111f, 7_000L + it * 1_000) }
+        assertEquals(0, d.snapshot().speedings)
+    }
+
+    @Test
+    fun aSampleArrivingOutOfOrderIsIgnored() {
+        drive()
+        sig(Signal.Speed(90f, atMs = 2_000))
+        sig(Signal.Speed(10f, atMs = 1_000))
+        assertEquals(90f, d.snapshot().speedKph)
+        assertEquals(0, d.snapshot().harshBrakes)
+    }
+
+    @Test
+    fun aTimestampFarFromNowFallsBackToTheArrivalTime() {
+        drive()
+        now = 100_000
+        sig(Signal.Speed(90f, atMs = 5_000))
+        now = 101_000
+        sig(Signal.Speed(10f, atMs = 5_000))
+        assertEquals(1, d.snapshot().harshBrakes)
+    }
+
+    @Test
+    fun goingThroughNeutralDoesNotStartANewDrive() {
+        drive()
+        harshBrake(1_000)
+        sig(Signal.Gear(GearState.NEUTRAL))
+        drive()
+        val alert = harshBrake(10_000).filterIsInstance<Effect.SafetyAlert>()
+        assertEquals(1, alert.size)
+        assertEquals(2, d.snapshot().harshBrakes)
+    }
+
+    @Test
     fun secondRiskyMomentSendsOneSafetyAlertToTheFamily() {
         drive()
         assertTrue(harshBrake(1_000).none { it is Effect.SafetyAlert })

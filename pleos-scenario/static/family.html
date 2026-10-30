@@ -114,6 +114,7 @@ audio { width: 100%; }
   const AVATAR = { "엄마": "#9b6255", "민지": "#79619e", "아빠": "#45617b" };
   const MAX_REC_MS = 15000;
   // one-tap voice replies to a safety alert (server QUICK_REPLIES): sender -> [clip, words]
+  const quickSent = new Set(); // feed seqs of safety alerts already answered, so a redraw keeps the button off
   const QUICK = { "엄마": ["cheer_mom_slow", "천천히 와도 돼. 안전이 제일이야"], "민지": ["cheer_minji_slow", "아빠, 천천히 와~ 사랑해"] };
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -134,7 +135,8 @@ audio { width: 100%; }
     if (it.kind === "safety") {
       const [clip, words] = QUICK[me];
       return `<div class="msg car safety"><span class="av">차</span>
-        <div><div class="b">⚠️ ${esc(it.text)}<br><button type="button" class="quick" data-clip="${clip}">🎙 ${esc(me)} 목소리로 "${esc(words)}"</button></div>
+        <div><div class="b">⚠️ ${esc(it.text)}<br>${quickSent.has(it.seq) ? '<button type="button" class="quick" disabled>✓ 목소리를 보냈어요</button>'
+          : `<button type="button" class="quick" data-clip="${clip}" data-seq="${it.seq}">🎙 ${esc(me)} 목소리로 "${esc(words)}"</button>`}</div>
         <small>현대 패밀리 카신저 안전 알림 · ${esc(it.at)}</small></div></div>`;
     }
     const car = it.kind === "message";
@@ -178,7 +180,8 @@ audio { width: 100%; }
     const b = ev.target.closest("button.quick");
     if (!b) return;
     b.disabled = true;
-    try { await postJson("api/family/quick", { clip: b.dataset.clip }); } catch (e) { alert(e.message); b.disabled = false; }
+    try { quickSent.add(Number(b.dataset.seq)); await postJson("api/family/quick", { clip: b.dataset.clip }); redraw(); }
+    catch (e) { quickSent.delete(Number(b.dataset.seq)); alert(e.message); b.disabled = false; }
   });
 
   // ---- text ----

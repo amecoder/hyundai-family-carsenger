@@ -427,3 +427,19 @@ def test_safety_alert_from_the_car_reaches_the_family(base: str) -> None:
     post(base + "/api/car/event", {"kind": "safety", "text": "운전 중 급제동이 2번 있었어요."})
     _, feed = get(base + "/api/family/feed?after=0")
     assert feed["items"][-1]["kind"] == "safety"
+
+
+def test_quick_reply_with_a_non_text_clip_is_rejected(base: str) -> None:
+    for bad in ([], {"a": 1}, 3, None):
+        assert post(base + "/api/family/quick", {"clip": bad})[0] == 400
+
+
+def test_broken_voice_file_falls_back_to_text(tmp_path: Path) -> None:
+    from scenario.family import FamilyHub
+    from scenario.server import DemoWorld
+
+    (tmp_path / "cheer_mom.wav").write_bytes(b"not a wav file")
+    hub = FamilyHub()
+    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command("cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom"})
+    cmd = hub.commands_after(0)["commands"][-1]
+    assert cmd["type"] == "cheer" and "audio_id" not in cmd
