@@ -30,13 +30,13 @@
 | 2 | [출발 전 픽업 요청 · 오른쪽 탑승](https://amecoder.github.io/hyundai-family-carsenger/#parked_pickup) | 동네 마트 주차장에 있을 때 온 픽업 요청은 화면 카드로 보이고, 오른쪽 뒷문 탑승도 확인하며, 주차 중 응원은 카드와 함께 바로 재생하는지 확인 | 55초 |
 | 3 | [픽업 거절 (지금은 못 들름)](https://amecoder.github.io/hyundai-family-carsenger/#pickup_decline) | 분당 사무실에서 헬스장으로 가는 중 민지의 픽업 요청에 아빠가 "아니"라고 하면, 차는 경로를 바꾸지 않고 가족에게 거절 이유를 대신 전하는지 확인 | 34초 |
 | 4 | [짐만 실음 (오탐 방지)](https://amecoder.github.io/hyundai-family-carsenger/#luggage) | 동네 카페에서 태권도장으로 민지를 데리러 감 → 뒷문으로 가방만 실으면 알림이 가지 않고, 실제로 앉았을 때만 탑승 확인이 가는지 확인 | 37초 |
-| 5 | [주말 장거리 · 할머니 댁](https://amecoder.github.io/hyundai-family-carsenger/#long_drive) | 집에서 전주 할머니 댁으로 → 고속도로에서 민지 응원이 바로 재생 → 2시간 연속 운전(시연용 20초)이면 휴식 권유 → 휴게소 정차 알림 (기능 ①③) | 60초 |
+| 5 | [주말 장거리 · 할머니 댁](https://amecoder.github.io/hyundai-family-carsenger/#long_drive) | 집에서 전주 할머니 댁으로 → 고속도로에서 민지 응원이 바로 재생 → 2시간 연속 운전(시연용 20초)이면 휴식 권유 → 휴게소 정차 알림 (기능 ①③) | 61초 |
 | 6 | [혼자 장거리 출장 (휴식 권유)](https://amecoder.github.io/hyundai-family-carsenger/#solo_long_drive) | 판교 사무실에서 부산 출장지로 → 응원이 없어도 2시간 연속 운전(시연용 20초)이면 휴식을 권하고, 휴게소 정차를 가족에게 알리는지 확인 | 46초 |
 | 7 | [급제동·과속 → 가족 응원](https://amecoder.github.io/hyundai-family-carsenger/#safe_driving) | 혼자 퇴근하는 아빠가 과속 1번·급제동 1번을 하면 가족방에 안전 알림이 가고, 엄마의 빠른 답장 목소리가 주행 중인 차에서 바로 재생되는지 확인 (기능 ①④) | 52초 |
 | 8 | [응원이 연달아 온 날 (차례로 재생)](https://amecoder.github.io/hyundai-family-carsenger/#many_cheers) | 집에서 마트로 가는 중 엄마·민지의 응원 4개가 연달아 와도 겹치지 않고 도착한 순서대로 하나씩 재생하는지 확인 (기능 ③) | 35초 |
 | 9 | [EV 충전 완료 알림](https://amecoder.github.io/hyundai-family-carsenger/#ev_charge) | 아파트 충전소에 주차해 충전 중, 충전량이 목표(80%)에 도달하면 가족에게 알림 (기능 ①) | 22초 |
 
-> 녹화 조건: 모든 영상은 실제 Pleos Connect 에뮬레이터 v2.1.0 녹화입니다. 차량 신호는 Virtual Console을 자동으로 조작했고, 운전자 목소리와 엄마·민지의 목소리는 공개 TTS로 만든 녹음을 마이크 대신 넣었습니다(운전자 답은 Pleos STT가 실제로 인식하고, 가족 목소리는 녹음 그대로 재생). 장거리 시나리오는 2시간 연속 운전을 20초로 줄였습니다. 녹화 스크립트: `pleos-scenario/record_demo.cjs`(시나리오별), `pleos-scenario/record_family_demo.cjs`(직접 조작).
+> 녹화 조건: 모든 영상은 실제 Pleos Connect 에뮬레이터 v2.1.0 녹화입니다. 차량 신호는 Virtual Console을 자동으로 조작했고, 운전자 목소리와 엄마·민지의 목소리는 공개 TTS로 만든 녹음을 마이크 대신 넣었습니다(민지는 공개 여성 목소리의 음 높이·포먼트를 올려 아이 목소리로 만듦)(운전자 답은 Pleos STT가 실제로 인식하고, 가족 목소리는 녹음 그대로 재생). 장거리 시나리오는 2시간 연속 운전을 20초로 줄였습니다. 녹화 스크립트: `pleos-scenario/record_demo.cjs`(시나리오별), `pleos-scenario/record_family_demo.cjs`(직접 조작).
 
 ## 저장소 구성
 
