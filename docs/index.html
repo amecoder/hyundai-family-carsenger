@@ -3,36 +3,115 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>현대 패밀리 카신저 시연 영상</title>
+<title>현대 패밀리 카신저 시연</title>
 <style>
-  :root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --link: #0969da; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --link: #4493f8; } }
+  :root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --link: #0969da; --card: #f6f8fa; --line: #d1d9e0; --check: #1a7f37; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --link: #4493f8; --card: #151b23; --line: #3d444d; --check: #3fb950; } }
   body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif; line-height: 1.6; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 1.6rem; margin: 0 0 4px; }
-  p.sub { color: var(--muted); margin: 0 0 16px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; }
+  h2 { font-size: 1.3rem; margin: 40px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 0 0 4px; }
+  p.sub, .muted { color: var(--muted); }
+  .check { color: var(--check); }
   video { width: 100%; height: auto; border-radius: 8px; background: #000; }
-  ol { padding-left: 1.3em; }
+  img.diagram { width: 100%; height: auto; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 16px 0; }
+  .card p { margin: 4px 0 12px; }
+  .dur { font-weight: 400; font-size: .85rem; color: var(--muted); }
+  details { margin-top: 10px; } summary { cursor: pointer; color: var(--link); }
+  ol li { margin: 6px 0; }
   a { color: var(--link); }
-  .note { color: var(--muted); font-size: 0.9rem; }
+  .toc { columns: 2; padding-left: 1.3em; }
+  @media (max-width: 640px) { .toc { columns: 1; } }
 </style>
 </head>
 <body>
 <main>
-  <h1>현대 패밀리 카신저 — 시연 영상</h1>
-  <p class="sub">팀 nemo · 현대자동차그룹 차량용 앱 개발 공모전 출품작 · 46초, 소리 포함</p>
-  <video controls preload="metadata" poster="demo/carsenger_demo_preview.gif">
-    <source src="demo/carsenger_demo.mp4" type="video/mp4">
-    브라우저가 영상을 재생하지 못하면 <a href="demo/carsenger_demo.mp4">mp4 파일</a>을 내려받아 보세요.
-  </video>
-  <ol>
-    <li>민지가 가족 웹에서 「데리러 와」(○○수학학원 앞)를 보내면, 차가 "경유지로 추가할까요?"라고 묻습니다.</li>
-    <li>운전자가 "응, 추가해 줘"라고 답하면 음성 인식으로 승인되고, 내비에 경로가 잡히며, 가족방에 "가는 중"이 전해집니다.</li>
-    <li>학원에 도착하면 차가 도착을 알리고, 뒷좌석 문·착석으로 민지의 탑승을 확인해 가족에게 알립니다.</li>
-    <li>집으로 가는 동안 엄마가 응원을 녹음해 보내면, 주행 중에는 기다렸다가 집에 도착해 정차했을 때 차에서 재생합니다.</li>
-  </ol>
-  <p class="note">Pleos 에뮬레이터(가운데)와 가족 웹(오른쪽)을 함께 녹화했습니다. 운전자 목소리와 엄마의 녹음은 공개 TTS로 만든 음성을 마이크 대신 넣었고, 차량 신호는 Virtual Console을 자동으로 조작했습니다.</p>
-  <p><a href="https://github.com/amecoder/hyundai-family-carsenger">소스 코드와 APK (GitHub 저장소)</a></p>
+  <h1>현대 패밀리 카신저</h1>
+  <p class="sub">팀 nemo · 현대자동차그룹 차량용 앱 개발 공모전 출품작 · <a href="https://github.com/amecoder/hyundai-family-carsenger">소스 코드와 APK</a></p>
+  <p>차가 가족 대화방의 한 구성원이 되어 출발·도착·뒷좌석 탑승을 운전자 대신 가족에게 알리고, 가족의 픽업 요청과 응원 목소리를 운전자가 화면을 만지지 않고 받게 하는 Pleos Connect 앱입니다.</p>
+
+  <h2>1. 한눈에 보는 구조</h2>
+  <p>가족은 휴대폰 웹으로, 운전자는 목소리로만 참여합니다. 차량 앱이 Pleos SDK로 차의 상태(기어·문·좌석·충전)를 읽고, 말하고(TTS), 듣고(STT), 내비에 경유지를 넣습니다(NaviHelper).</p>
+  <img class="diagram" src="diagrams/01_system.svg" alt="시스템 구조: 가족 휴대폰 웹과 가족 서버가 요청과 알림을 주고받고, 가족 서버와 차량 앱이 명령과 알림을 주고받는다. 차량 앱은 Vehicle SDK에서 기어·문·착석·충전 신호를 받고, TTS로 운전자에게 말하고, STT로 운전자의 말을 알아듣고, NaviHelper로 내비 경로와 경유지를 넣는다.">
+
+  <h2>2. 핵심 흐름: 픽업 요청을 목소리로 승인</h2>
+  <p>운전 중인 부모가 폰을 보지 않고 "응" 한마디로 아이의 픽업 요청을 받아들이는 순서입니다. 아래 「평일 학원 픽업」 영상의 2~4단계가 이 그림입니다.</p>
+  <img class="diagram" src="diagrams/02_pickup_sequence.svg" alt="픽업 음성 승인 순서: 1 민지 폰이 가족 서버에 데리러 와를 보낸다. 2 가족 서버가 차량 앱에 픽업 요청과 장소 좌표를 보낸다. 3 차량 앱이 TTS로 운전자에게 경유지로 추가할까요라고 묻는다. 4 운전자가 응 추가해 줘라고 답하고 STT가 인식한다. 5 차량 앱이 내비에 경로와 경유지를 추가한다. 6 내비가 경로를 확정하고 약 12분이라고 알려 준다. 7 차량 앱이 가족 서버에 가는 중 12분 뒤 도착을 보낸다. 8 가족방에 표시된다. 답이 없으면 12초 뒤 거절로 처리하고, 아니라고 답하면 경로는 그대로 두고 가족방에 지금은 들를 수 없어요를 보낸다.">
+
+  <h2>3. 어떤 영상이 무엇을 보여 주나</h2>
+  <img class="diagram" src="diagrams/03_scenario_map.svg" alt="시나리오 9개와 기능 3개의 대응표. 기능 1 차가 먼저 알림, 기능 2 픽업을 목소리로, 기능 3 응원은 멈췄을 때. 평일 학원 픽업과 출발 전 픽업은 세 기능 모두, 픽업 거절은 기능 2, 짐만 실음과 혼자 장거리와 EV 충전 완료는 기능 1, 주말 장거리는 기능 1과 3, 신호 대기와 응원이 많은 날은 기능 3을 보여 준다.">
+  <ul class="toc"><li><a href="#pickup">평일 학원 픽업</a></li><li><a href="#parked_pickup">출발 전 픽업 요청 · 오른쪽 탑승</a></li><li><a href="#pickup_decline">픽업 거절 (지금은 못 들름)</a></li><li><a href="#luggage">짐만 실음 (오탐 방지)</a></li><li><a href="#long_drive">주말 장거리 · 휴게소 응원</a></li><li><a href="#solo_long_drive">혼자 장거리 (휴식 권유)</a></li><li><a href="#red_light">신호 대기 (재생 안 함 확인)</a></li><li><a href="#many_cheers">응원이 많은 날 (정차 1회당 3개)</a></li><li><a href="#ev_charge">EV 충전 완료 알림</a></li></ul>
+
+  <h2>4. 시나리오별 영상 (소리 포함)</h2>
+  <p class="muted">화면 왼쪽은 시나리오 실행기, 가운데는 Pleos 에뮬레이터의 차량 화면, 오른쪽은 가족 휴대폰 웹입니다. 화면 아래 자막이 지금 단계와 「확인할 것」을 알려 줍니다. 소리는 차의 음성 안내와 응원 재생입니다.</p>
+  
+  <section class="card" id="pickup">
+    <h3>1. 평일 학원 픽업 <span class="dur">57초</span></h3>
+    <p>출발 → 민지의 픽업 요청 → 음성 승인 → 학원 도착 → 뒷좌석 탑승 확인 → 집 도착·응원 재생 (기능 ①②③)</p>
+    <video controls preload="none" poster="scenarios/pickup.jpg"><source src="scenarios/pickup.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (8단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 집</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>18:00 아빠 출발</b><br><span class=muted>상황: 기어 D, 시속 50km까지 가속</span><br><span class=check>확인할 것: 엄마·민지 폰: &quot;아빠 출발, 40분 뒤 집 도착 예정&quot;</span></li><li><b>18:15 민지가 「데리러 와」</b><br><span class=muted>상황: 민지가 가족 웹에서 픽업 요청 (주행 유지)</span><br><span class=check>확인할 것: 차 화면에 픽업 승인 카드 + 음성 질문 &quot;경유지로 추가할까요?&quot;</span></li><li><b>아빠가 &quot;응&quot;</b><br><span class=muted>상황: 운전자가 &quot;응, 추가해 줘&quot;라고 답함 → 음성 인식(STT)으로 승인 (목소리는 공개 TTS 녹음을 마이크 대신 넣음)</span><br><span class=check>확인할 것: 경유지 추가 · 가족방: &quot;아빠가 가는 중, 12분 뒤 도착&quot;</span></li><li><b>18:27 학원 앞 도착</b><br><span class=muted>상황: 감속해 정차, 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;○○수학학원 앞에 도착했어요&quot;</span></li><li><b>18:28 민지 탑승</b><br><span class=muted>상황: 왼쪽 뒷문 열림 → 왼쪽 뒷좌석 착석 → 문 닫힘</span><br><span class=check>확인할 것: 엄마 폰: &quot;뒷좌석 탑승 확인 (민지)&quot;</span></li><li><b>집으로 출발 · 엄마가 응원 음성</b><br><span class=muted>상황: 기어 D, 시속 40km. 주행 중 엄마가 응원 음성을 보냄</span><br><span class=check>확인할 것: 가족방: &quot;민지와 함께 집으로 출발&quot; · 응원은 주행 중이라 보관만 함</span></li><li><b>18:55 집 도착</b><br><span class=muted>상황: 정차 후 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;집에 도착해서 주차했어요&quot; + 엄마의 응원 음성 재생</span></li></ol></details>
+  </section>
+  <section class="card" id="parked_pickup">
+    <h3>2. 출발 전 픽업 요청 · 오른쪽 탑승 <span class="dur">56초</span></h3>
+    <p>주차 중에 온 픽업 요청은 화면 카드로 보이고, 오른쪽 뒷문 탑승도 확인하며, 주차 중 응원은 보관 없이 바로 재생하는지 확인</p>
+    <video controls preload="none" poster="scenarios/parked_pickup.jpg"><source src="scenarios/parked_pickup.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (8단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 집</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>주차 중 민지의 「데리러 와」</b><br><span class=muted>상황: 아빠는 아직 주차 중(P)</span><br><span class=check>확인할 것: 차 화면에 픽업 카드가 그대로 보임 + 음성 질문</span></li><li><b>아빠가 &quot;응&quot;</b><br><span class=muted>상황: 주차 중 승인</span><br><span class=check>확인할 것: 가족방: &quot;아빠가 가는 중, 10분 뒤 ○○도서관 앞 도착&quot;</span></li><li><b>도서관으로 출발</b><br><span class=muted>상황: 기어 D, 시속 50km</span><br><span class=check>확인할 것: 가족방: &quot;아빠 출발, 30분 뒤 집 도착 예정&quot; · 경유지 배너</span></li><li><b>도서관 앞 도착</b><br><span class=muted>상황: 정차 후 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;○○도서관 앞에 도착했어요&quot;</span></li><li><b>민지가 오른쪽으로 탑승</b><br><span class=muted>상황: 오른쪽 뒷문 열림 → 오른쪽 뒷좌석 착석 → 닫힘</span><br><span class=check>확인할 것: 가족방: &quot;뒷좌석 탑승 확인 (민지)&quot;</span></li><li><b>주차 중 엄마의 응원</b><br><span class=muted>상황: 아직 주차(P) 중에 엄마가 응원을 보냄</span><br><span class=check>확인할 것: 보관하지 않고 바로 재생</span></li><li><b>집으로 출발 후 도착</b><br><span class=muted>상황: 기어 D로 주행 후 정차·P</span><br><span class=check>확인할 것: 가족방: &quot;민지와 함께 집으로 출발&quot; → &quot;집에 도착해서 주차했어요&quot;</span></li></ol></details>
+  </section>
+  <section class="card" id="pickup_decline">
+    <h3>3. 픽업 거절 (지금은 못 들름) <span class="dur">34초</span></h3>
+    <p>주행 중 민지의 픽업 요청에 아빠가 &quot;아니&quot;라고 하면, 차는 경로를 바꾸지 않고 가족에게 거절 이유를 대신 전하는지 확인</p>
+    <video controls preload="none" poster="scenarios/pickup_decline.jpg"><source src="scenarios/pickup_decline.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (5단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 집</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>퇴근길 출발</b><br><span class=muted>상황: 기어 D, 시속 60km</span><br><span class=check>확인할 것: 가족방: &quot;아빠 출발, 25분 뒤 집 도착 예정&quot;</span></li><li><b>민지가 「데리러 와」</b><br><span class=muted>상황: 주행 중 픽업 요청</span><br><span class=check>확인할 것: 차 음성 질문 &quot;경유지로 추가할까요?&quot;</span></li><li><b>아빠가 &quot;아니&quot;</b><br><span class=muted>상황: 운전자가 &quot;아니, 지금은 안 돼&quot;라고 답함 → 음성 인식(STT)으로 거절 (목소리는 공개 TTS 녹음을 마이크 대신 넣음)</span><br><span class=check>확인할 것: 차 음성 &quot;알겠어요. 가족에게 전할게요.&quot; · 가족방: &quot;지금은 들를 수 없어요. 조금만 기다려 줘&quot;</span></li><li><b>집 도착</b><br><span class=muted>상황: 정차 후 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;집에 도착해서 주차했어요&quot; · 경유지 없음</span></li></ol></details>
+  </section>
+  <section class="card" id="luggage">
+    <h3>4. 짐만 실음 (오탐 방지) <span class="dur">37초</span></h3>
+    <p>학원 앞에서 뒷문으로 가방만 실으면 알림이 가지 않고, 실제로 앉았을 때만 탑승 확인이 가는지 확인</p>
+    <video controls preload="none" poster="scenarios/luggage.jpg"><source src="scenarios/luggage.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (5단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 집</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>학원으로 가는 중 픽업 요청</b><br><span class=muted>상황: 주행 중 민지의 요청 → 아빠 &quot;응&quot;</span><br><span class=check>확인할 것: 경유지 추가</span></li><li><b>학원 앞 정차</b><br><span class=muted>상황: 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;○○수학학원 앞에 도착했어요&quot;</span></li><li><b>오른쪽 뒷문으로 가방만 실음</b><br><span class=muted>상황: 오른쪽 뒷문 열림 → 닫힘, 좌석은 비어 있음</span><br><span class=check>확인할 것: 탑승 알림 보내지 않음 · 차 화면: &quot;착석 신호 없음&quot;</span></li><li><b>민지가 왼쪽으로 실제 탑승</b><br><span class=muted>상황: 왼쪽 뒷문 열림 → 착석 → 닫힘</span><br><span class=check>확인할 것: 이때만 &quot;뒷좌석 탑승 확인 (민지)&quot;</span></li></ol></details>
+  </section>
+  <section class="card" id="long_drive">
+    <h3>5. 주말 장거리 · 휴게소 응원 <span class="dur">62초</span></h3>
+    <p>고속도로 주행 → 2시간 연속 운전(시연용 20초) → 휴게소 정차 시 민지의 응원 재생 (기능 ③)</p>
+    <video controls preload="none" poster="scenarios/long_drive.jpg"><source src="scenarios/long_drive.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (6단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 할머니 댁</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>출발</b><br><span class=muted>상황: 기어 D, 시속 100km까지 가속</span><br><span class=check>확인할 것: 가족방: &quot;아빠 출발, 180분 뒤 할머니 댁 도착 예정&quot;</span></li><li><b>민지가 응원 음성을 남김</b><br><span class=muted>상황: 고속도로 주행 중 (2시간을 20초로 압축)</span><br><span class=check>확인할 것: 주행 중이라 재생하지 않고 보관</span></li><li><b>연속 운전 2시간 도달</b><br><span class=muted>상황: 계속 주행</span><br><span class=check>확인할 것: 차 음성 한 문장: &quot;가족이 보낸 응원 메시지가 있어요. 쉬는 곳에 멈추면 들려 드릴게요.&quot;</span></li><li><b>휴게소 정차</b><br><span class=muted>상황: 감속해 정차, 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;휴게소에서 쉬는 중이에요&quot; + 민지의 응원 재생</span></li><li><b>다시 출발 후 도착</b><br><span class=muted>상황: 기어 D로 주행 후 정차·P</span><br><span class=check>확인할 것: 가족방: &quot;할머니 댁에 도착해서 주차했어요&quot;</span></li></ol></details>
+  </section>
+  <section class="card" id="solo_long_drive">
+    <h3>6. 혼자 장거리 (휴식 권유) <span class="dur">46초</span></h3>
+    <p>응원이 하나도 없어도 2시간 연속 운전(시연용 20초)이면 휴식을 권하고, 휴게소 정차를 가족에게 알리는지 확인</p>
+    <video controls preload="none" poster="scenarios/solo_long_drive.jpg"><source src="scenarios/solo_long_drive.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (5단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 부산</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>출발</b><br><span class=muted>상황: 기어 D, 시속 100km</span><br><span class=check>확인할 것: 가족방: &quot;아빠 출발, 240분 뒤 부산 도착 예정&quot;</span></li><li><b>응원 없이 계속 주행</b><br><span class=muted>상황: 고속도로 주행 (2시간을 20초로 압축)</span><br><span class=check>확인할 것: 변화 없음</span></li><li><b>연속 운전 2시간 도달</b><br><span class=muted>상황: 계속 주행</span><br><span class=check>확인할 것: 차 음성 &quot;오래 운전하셨어요. 잠시 쉬어 가세요.&quot; (보관된 응원이 없을 때의 문장)</span></li><li><b>휴게소 정차</b><br><span class=muted>상황: 감속해 정차, 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;휴게소에서 쉬는 중이에요&quot; · 재생할 응원 없음</span></li></ol></details>
+  </section>
+  <section class="card" id="red_light">
+    <h3>7. 신호 대기 (재생 안 함 확인) <span class="dur">41초</span></h3>
+    <p>속도가 0이어도 기어가 D면 응원 음성을 재생하지 않고, 주차(P)했을 때 재생하는지 확인</p>
+    <video controls preload="none" poster="scenarios/red_light.jpg"><source src="scenarios/red_light.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (5단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 집</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>시내 주행 · 엄마 응원 도착</b><br><span class=muted>상황: 기어 D, 시속 40km. 엄마가 응원 음성을 보냄</span><br><span class=check>확인할 것: 주행 중이라 보관</span></li><li><b>빨간불 정지 (기어 D 유지)</b><br><span class=muted>상황: 속도 0, 기어는 D</span><br><span class=check>확인할 것: 응원 재생 안 함 · 화면도 주행 모드 유지</span></li><li><b>초록불 출발</b><br><span class=muted>상황: 다시 시속 40km</span><br><span class=check>확인할 것: 변화 없음</span></li><li><b>집 주차</b><br><span class=muted>상황: 정차 후 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;집에 도착해서 주차했어요&quot; + 엄마의 응원 재생</span></li></ol></details>
+  </section>
+  <section class="card" id="many_cheers">
+    <h3>8. 응원이 많은 날 (정차 1회당 3개) <span class="dur">55초</span></h3>
+    <p>주행 중 응원이 4개 쌓이면 첫 정차에서 3개만 재생하고, 남은 1개는 다음 정차에서 재생하는지 확인</p>
+    <video controls preload="none" poster="scenarios/many_cheers.jpg"><source src="scenarios/many_cheers.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (5단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 마트</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>마트로 출발</b><br><span class=muted>상황: 기어 D, 시속 40km</span><br><span class=check>확인할 것: 가족방: &quot;아빠 출발, 10분 뒤 마트 도착 예정&quot;</span></li><li><b>응원 4개가 연달아 도착</b><br><span class=muted>상황: 주행 중 엄마·민지가 번갈아 응원</span><br><span class=check>확인할 것: 모두 보관 · 홈 화면 &quot;도착하면 들을 응원 4개&quot;</span></li><li><b>마트 주차</b><br><span class=muted>상황: 정차 후 기어 P</span><br><span class=check>확인할 것: 가족방: &quot;마트에 도착해서 주차했어요&quot; + 응원 3개만 차례로 재생, 1개는 다음 정차로</span></li><li><b>집으로 출발 후 주차</b><br><span class=muted>상황: 기어 D로 주행 후 정차·P</span><br><span class=check>확인할 것: 남은 응원 1개(민지 &quot;아빠 최고&quot;) 재생</span></li></ol></details>
+  </section>
+  <section class="card" id="ev_charge">
+    <h3>9. EV 충전 완료 알림 <span class="dur">22초</span></h3>
+    <p>주차 중 충전량이 목표(80%)에 도달하면 가족에게 알림 (기능 ①)</p>
+    <video controls preload="none" poster="scenarios/ev_charge.jpg"><source src="scenarios/ev_charge.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (4단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 목적지: 집</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>충전 시작</b><br><span class=muted>상황: 충전량 60%</span><br><span class=check>확인할 것: 변화 없음</span></li><li><b>충전 진행</b><br><span class=muted>상황: 70% → 75%</span><br><span class=check>확인할 것: 변화 없음</span></li><li><b>목표 도달</b><br><span class=muted>상황: 80%</span><br><span class=check>확인할 것: 가족방: &quot;충전 80% 완료, 출발 가능&quot;</span></li></ol></details>
+  </section>
+
+  <h2>5. 직접 조작 시연</h2>
+  <p>시나리오 버튼 대신 가족 웹을 사람이 직접 누른 녹화입니다. 민지의 「데리러 와」 → 운전자 "응, 추가해 줘" → 학원 도착·탑승 → 엄마의 응원 녹음 → 집 도착 후 재생.</p>
+  <video controls preload="none" poster="demo/carsenger_demo_preview.gif"><source src="demo/carsenger_demo.mp4" type="video/mp4"></video>
+
+  <h2>녹화 조건</h2>
+  <ul>
+    <li>모든 영상은 실제 Pleos Connect 에뮬레이터 v2.1.0에서 녹화했습니다. 차량 신호(기어·문·착석·충전)는 Virtual Console을 자동으로 조작해 바꿨습니다.</li>
+    <li>운전자 목소리("응, 추가해 줘" / "아니, 지금은 안 돼")와 엄마의 녹음은 공개 TTS로 만든 음성을 마이크 대신 넣었습니다. 인식은 Pleos 음성 인식(STT)이 실제로 합니다.</li>
+    <li>가족 서버는 실서비스의 Firebase 대신 PC의 실행기가 맡았습니다. 장거리 시나리오는 2시간 연속 운전을 20초로 줄여 시연합니다.</li>
+  </ul>
 </main>
 </body>
 </html>

@@ -2,20 +2,41 @@
 
 > 차가 가족 대화방의 한 구성원이 되어 출발·도착·뒷좌석 탑승을 운전자 대신 가족에게 알리고, 가족의 픽업 요청과 응원 목소리를 운전자가 화면을 만지지 않고 받게 하는 Pleos Connect 앱.
 
-## 시연 영상 (46초, 소리 포함)
+## 시연 영상 (소리 포함)
 
-[![시연 영상 미리보기 — 누르면 소리 있는 영상이 열립니다](docs/demo/carsenger_demo_preview.gif)](https://amecoder.github.io/hyundai-family-carsenger/)
+**▶ [영상 페이지 열기](https://amecoder.github.io/hyundai-family-carsenger/)** — 시나리오 9개 + 직접 조작 시연 1개. 브라우저에서 소리와 함께 바로 재생됩니다(GitHub Pages).
 
-**▶ [소리 있는 영상 보기](https://amecoder.github.io/hyundai-family-carsenger/)** — 위 미리보기는 소리가 없습니다. 브라우저에서 바로 재생됩니다(GitHub Pages). 파일로 받으려면 [`docs/demo/carsenger_demo.mp4`](docs/demo/carsenger_demo.mp4).
+[![직접 조작 시연 미리보기 — 누르면 영상 페이지가 열립니다](docs/demo/carsenger_demo_preview.gif)](https://amecoder.github.io/hyundai-family-carsenger/)
 
-Pleos 에뮬레이터(가운데)와 가족 웹(오른쪽, 엄마·민지 폰 역할)을 함께 녹화했습니다. 소리는 에뮬레이터의 차량 음성 안내와 응원 재생입니다.
+영상 화면은 왼쪽이 시나리오 실행기, 가운데가 Pleos 에뮬레이터의 차량 화면, 오른쪽이 가족 휴대폰 웹입니다. 화면 아래 자막이 지금 단계와 「확인할 것」을 알려 줍니다.
 
-1. 민지가 가족 웹에서 「데리러 와」(○○수학학원 앞)를 보내면, 차가 "경유지로 추가할까요?"라고 묻습니다.
-2. 운전자가 "응, 추가해 줘"라고 답하면 음성 인식으로 승인되고, 내비에 경로가 잡히며, 가족방에 "가는 중"이 전해집니다.
-3. 학원에 도착하면 차가 도착을 알리고, 뒷좌석 문·착석으로 민지의 탑승을 확인해 가족에게 알립니다.
-4. 집으로 가는 동안 엄마가 응원을 녹음해 보내면, 주행 중에는 기다렸다가 집에 도착해 정차했을 때 차에서 재생합니다.
+### 한눈에 보는 구조
 
-> 녹화 조건: 운전자 목소리와 엄마의 녹음은 공개 TTS로 만든 음성을 마이크 대신 넣었습니다. 차량 신호는 Virtual Console을 자동으로 조작했습니다. 녹화 스크립트는 `pleos-scenario/record_family_demo.cjs`입니다.
+가족은 휴대폰 웹으로, 운전자는 목소리로만 참여합니다. 차량 앱이 Pleos SDK로 차의 상태를 읽고(Vehicle), 말하고(TTS), 듣고(STT), 내비에 경유지를 넣습니다(NaviHelper).
+
+![시스템 구조: 가족 휴대폰 웹 ↔ 가족 서버 ↔ 차량 앱(판단 엔진) ↔ Pleos SDK(Vehicle·TTS·STT·NaviHelper), 운전자는 TTS로 듣고 STT로 말한다](docs/diagrams/01_system.svg)
+
+### 핵심 흐름: 픽업 요청을 목소리로 승인
+
+![픽업 음성 승인 순서: 민지의 데리러 와 → 서버 → 차량 앱 → TTS 질문 → 운전자 "응, 추가해 줘" STT 인식 → 내비 경유지 추가 → 가족방에 "가는 중, 12분 뒤 도착"](docs/diagrams/02_pickup_sequence.svg)
+
+### 시나리오별 영상
+
+![시나리오 9개가 기능 ①차가 먼저 알림 ②픽업을 목소리로 ③응원은 멈췄을 때 중 무엇을 보여 주는지 나타낸 표](docs/diagrams/03_scenario_map.svg)
+
+| # | 시나리오 (누르면 영상) | 확인하는 것 | 길이 |
+|---|---|---|---|
+| 1 | [평일 학원 픽업](https://amecoder.github.io/hyundai-family-carsenger/#pickup) | 출발 → 민지의 픽업 요청 → 음성 승인 → 학원 도착 → 뒷좌석 탑승 확인 → 집 도착·응원 재생 (기능 ①②③) | 57초 |
+| 2 | [출발 전 픽업 요청 · 오른쪽 탑승](https://amecoder.github.io/hyundai-family-carsenger/#parked_pickup) | 주차 중에 온 픽업 요청은 화면 카드로 보이고, 오른쪽 뒷문 탑승도 확인하며, 주차 중 응원은 보관 없이 바로 재생하는지 확인 | 56초 |
+| 3 | [픽업 거절 (지금은 못 들름)](https://amecoder.github.io/hyundai-family-carsenger/#pickup_decline) | 주행 중 민지의 픽업 요청에 아빠가 "아니"라고 하면, 차는 경로를 바꾸지 않고 가족에게 거절 이유를 대신 전하는지 확인 | 34초 |
+| 4 | [짐만 실음 (오탐 방지)](https://amecoder.github.io/hyundai-family-carsenger/#luggage) | 학원 앞에서 뒷문으로 가방만 실으면 알림이 가지 않고, 실제로 앉았을 때만 탑승 확인이 가는지 확인 | 37초 |
+| 5 | [주말 장거리 · 휴게소 응원](https://amecoder.github.io/hyundai-family-carsenger/#long_drive) | 고속도로 주행 → 2시간 연속 운전(시연용 20초) → 휴게소 정차 시 민지의 응원 재생 (기능 ③) | 62초 |
+| 6 | [혼자 장거리 (휴식 권유)](https://amecoder.github.io/hyundai-family-carsenger/#solo_long_drive) | 응원이 하나도 없어도 2시간 연속 운전(시연용 20초)이면 휴식을 권하고, 휴게소 정차를 가족에게 알리는지 확인 | 46초 |
+| 7 | [신호 대기 (재생 안 함 확인)](https://amecoder.github.io/hyundai-family-carsenger/#red_light) | 속도가 0이어도 기어가 D면 응원 음성을 재생하지 않고, 주차(P)했을 때 재생하는지 확인 | 41초 |
+| 8 | [응원이 많은 날 (정차 1회당 3개)](https://amecoder.github.io/hyundai-family-carsenger/#many_cheers) | 주행 중 응원이 4개 쌓이면 첫 정차에서 3개만 재생하고, 남은 1개는 다음 정차에서 재생하는지 확인 | 55초 |
+| 9 | [EV 충전 완료 알림](https://amecoder.github.io/hyundai-family-carsenger/#ev_charge) | 주차 중 충전량이 목표(80%)에 도달하면 가족에게 알림 (기능 ①) | 22초 |
+
+> 녹화 조건: 모든 영상은 실제 Pleos Connect 에뮬레이터 v2.1.0 녹화입니다. 차량 신호는 Virtual Console을 자동으로 조작했고, 운전자 목소리와 엄마의 녹음은 공개 TTS로 만든 음성을 마이크 대신 넣었습니다(인식은 Pleos STT가 실제로 함). 장거리 시나리오는 2시간 연속 운전을 20초로 줄였습니다. 녹화 스크립트: `pleos-scenario/record_demo.cjs`(시나리오별), `pleos-scenario/record_family_demo.cjs`(직접 조작).
 
 ## 저장소 구성
 
