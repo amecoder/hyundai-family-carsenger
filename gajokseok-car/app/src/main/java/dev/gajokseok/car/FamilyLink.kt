@@ -98,7 +98,7 @@ class FamilyLink(
 
     private fun parse(o: JSONObject): Command? = when (o.getString("type")) {
         "reset" -> Command.Reset
-        "set_trip" -> Command.SetTrip(o.getString("destination"), o.getInt("eta_min"), o.getString("driver"), o.getString("child"))
+        "set_trip" -> Command.SetTrip(o.getString("origin"), o.getString("destination"), o.getInt("eta_min"), o.getString("driver"), o.getString("child"))
         "set_rest_threshold" -> Command.SetRestThreshold(o.getInt("seconds"))
         "pickup_request" -> Command.PickupRequest(
             o.getString("by"), o.getString("place"), o.getInt("eta_min"),

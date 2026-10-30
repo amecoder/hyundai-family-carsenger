@@ -18,7 +18,7 @@ class DetectorTest {
     fun setUp() {
         d = Detector()
         now = 0L
-        cmd(Command.SetTrip(destination = "집", etaMin = 40, driver = "아빠", child = "민지"))
+        cmd(Command.SetTrip(origin = "회사", destination = "집", etaMin = 40, driver = "아빠", child = "민지"))
         sig(Signal.Gear(GearState.PARK))
     }
 
@@ -36,7 +36,7 @@ class DetectorTest {
     @Test
     fun departureSendsEtaMessageAndShowsDrivingScreen() {
         val e = drive()
-        assertEquals(listOf("아빠 출발, 40분 뒤 집 도착 예정"), messages(e))
+        assertEquals(listOf("아빠 회사에서 출발, 40분 뒤 집 도착 예정"), messages(e))
         assertTrue(Effect.ShowScreen(Screen.DRIVING) in e)
     }
 
@@ -103,50 +103,43 @@ class DetectorTest {
     }
 
     @Test
-    fun cheerWhileDrivingIsHeldUntilParked() {
+    fun cheerWhileDrivingPlaysRightAway() {
         drive()
-        val held = cmd(Command.Cheer(from = "엄마", text = "조심히 와~"))
-        assertFalse(held.any { it is Effect.PlayCheer })
-        assertEquals(1, d.snapshot().pendingCheers)
-        val e = park()
+        val e = cmd(Command.Cheer(from = "엄마", text = "조심히 와~"))
         assertTrue(Effect.PlayCheer("엄마", "조심히 와~") in e)
-        assertEquals(0, d.snapshot().pendingCheers)
+        // Pleos covers third-party screens while driving, so the driving screen stays and only the voice plays
+        assertFalse(Effect.ShowScreen(Screen.CHEER) in e)
+        assertEquals(1, d.snapshot().cheersReceived)
     }
 
     @Test
-    fun cheerWhileParkedPlaysImmediately() {
+    fun cheerWhileParkedPlaysAndShowsTheCard() {
         val e = cmd(Command.Cheer(from = "엄마", text = "잘 다녀와"))
         assertTrue(Effect.PlayCheer("엄마", "잘 다녀와") in e)
+        assertTrue(Effect.ShowScreen(Screen.CHEER) in e)
     }
 
     @Test
-    fun recordedCheerKeepsItsClipThroughTheDriveAndPlaysItOnPark() {
+    fun recordedCheerPlaysItsClipWhileDriving() {
         drive()
         val url = "http://10.0.2.2:8090/api/audio/abc123"
-        val held = cmd(Command.Cheer(from = "엄마", text = "조심히 와", audioUrl = url, durationMs = 4200))
-        assertFalse(held.any { it is Effect.PlayCheer })
-        val e = park()
+        val e = cmd(Command.Cheer(from = "엄마", text = "조심히 와", audioUrl = url, durationMs = 4200))
         assertTrue(Effect.PlayCheer("엄마", "조심히 와", audioUrl = url, durationMs = 4200) in e)
     }
 
     @Test
-    fun atMostThreeCheersPerStop() {
+    fun everyCheerInARowIsPlayed() {
         drive()
-        repeat(4) { cmd(Command.Cheer(from = "엄마", text = "응원 $it")) }
-        val played = park().filterIsInstance<Effect.PlayCheer>()
-        assertEquals(3, played.size)
-        assertEquals(1, d.snapshot().pendingCheers)
+        val played = (0 until 4).flatMap { cmd(Command.Cheer(from = "엄마", text = "응원 $it")) }.filterIsInstance<Effect.PlayCheer>()
+        assertEquals(listOf("응원 0", "응원 1", "응원 2", "응원 3"), played.map { it.text })
     }
 
     @Test
-    fun homeArrivalAfterBoardingAnnouncesParkingAndPlaysCheer() {
+    fun homeArrivalAfterBoardingAnnouncesParking() {
         drive(); acceptPickup(); park(); board()
         drive()
-        cmd(Command.Cheer(from = "엄마", text = "조심히 와~"))
         val e = park()
         assertEquals(listOf("집에 도착해서 주차했어요"), messages(e))
-        assertTrue(Effect.PlayCheer("엄마", "조심히 와~") in e)
-        assertTrue(Effect.ShowScreen(Screen.CHEER) in e)
     }
 
     @Test
@@ -157,45 +150,117 @@ class DetectorTest {
     }
 
     @Test
-    fun redLightStopInDriveDoesNothing() {
-        drive()
-        cmd(Command.Cheer(from = "엄마", text = "조심히 와~"))
-        val e = sig(Signal.Speed(0f))
-        assertTrue(e.none { it is Effect.PlayCheer || it is Effect.FamilyMessage })
-        assertEquals(1, d.snapshot().pendingCheers)
+    fun destinationWithoutFinalConsonantTakesRo() {
+        cmd(Command.SetTrip(origin = "집", destination = "마트", etaMin = 10, driver = "아빠", child = "민지"))
+        drive(); acceptPickup(); park(); board()
+        assertEquals(listOf("민지와 함께 마트로 출발"), messages(drive()))
     }
 
     @Test
-    fun longDrivingGivesOneRestHintThenPlaysCheerAtRestStop() {
+    fun longDrivingGivesOneRestHintThenAnnouncesTheRestStop() {
         cmd(Command.SetRestThreshold(seconds = 20))
         drive()
-        cmd(Command.Cheer(from = "민지", text = "쉬었다 가세요"))
         now = 10_000
         assertTrue(d.onTick(now).isEmpty())
         now = 21_000
-        val hint = d.onTick(now)
-        assertTrue(hint.any { it is Effect.Speak && it.text.contains("쉬는 곳에 멈추면 들려 드릴게요") })
+        assertTrue(d.onTick(now).any { it is Effect.Speak && it.text == "오래 운전하셨어요. 잠시 쉬어 가세요." })
         now = 25_000
         assertTrue(d.onTick(now).none { it is Effect.Speak })
         now = 30_000
-        val e = park()
-        assertEquals(listOf("휴게소에서 쉬는 중이에요"), messages(e))
-        assertTrue(Effect.PlayCheer("민지", "쉬었다 가세요") in e)
+        assertEquals(listOf("휴게소에서 쉬는 중이에요"), messages(park()))
     }
 
     @Test
-    fun restHintWithoutCheerSuggestsBreak() {
-        cmd(Command.SetRestThreshold(seconds = 20))
-        drive()
-        now = 21_000
-        assertTrue(d.onTick(now).any { it is Effect.Speak && it.text.contains("잠시 쉬어 가세요") })
-    }
-
-    @Test
-    fun departingStopsCheerPlayback() {
+    fun departingKeepsACheerPlaying() {
         cmd(Command.Cheer(from = "엄마", text = "잘 다녀와"))
-        val e = drive()
-        assertTrue(Effect.StopVoice in e)
+        assertFalse(Effect.StopVoice in drive())
+    }
+
+    private fun speed(kph: Float, atMs: Long): List<Effect> { now = atMs; return sig(Signal.Speed(kph)) }
+
+    // 90 -> 10 km/h within a second: 80 km/h per second, far past an ordinary stop
+    private fun harshBrake(atMs: Long): List<Effect> = speed(90f, atMs) + speed(10f, atMs + 1_000)
+
+    @Test
+    fun suddenSpeedDropCountsAsHarshBraking() {
+        drive()
+        harshBrake(1_000)
+        assertEquals(1, d.snapshot().harshBrakes)
+    }
+
+    @Test
+    fun ordinaryStopIsNotHarshBraking() {
+        drive()
+        // 50 -> 0 km/h over 3 s, the way the demo scenarios stop
+        (0..10).forEach { speed(50f - it * 5f, 1_000L + it * 300) }
+        assertEquals(0, d.snapshot().harshBrakes)
+    }
+
+    @Test
+    fun samplesArrivingCloseTogetherDoNotInflateTheBrakingRate() {
+        drive()
+        speed(60f, 1_000); speed(54f, 2_000); speed(48f, 2_100)
+        assertEquals(0, d.snapshot().harshBrakes)
+    }
+
+    @Test
+    fun brakingIsMeasuredWithTheSensorTimestampNotTheDeliveryTime() {
+        drive()
+        now = 5_000
+        sig(Signal.Speed(90f, atMs = 1_000))
+        sig(Signal.Speed(10f, atMs = 2_000))
+        assertEquals(1, d.snapshot().harshBrakes)
+    }
+
+    @Test
+    fun brakingFromLowSpeedIsIgnored() {
+        drive()
+        speed(15f, 1_000); speed(0f, 1_300)
+        assertEquals(0, d.snapshot().harshBrakes)
+    }
+
+    @Test
+    fun speedingCountsOnceAfterTenSecondsAndAgainAfterSlowingDown() {
+        drive()
+        (0..12).forEach { speed(120f, 1_000L + it * 1_000) }
+        assertEquals(1, d.snapshot().speedings)
+        speed(90f, 15_000)
+        (0..10).forEach { speed(118f, 16_000L + it * 1_000) }
+        assertEquals(2, d.snapshot().speedings)
+    }
+
+    @Test
+    fun shortBurstOverTheLimitIsNotSpeeding() {
+        drive()
+        (0..5).forEach { speed(120f, 1_000L + it * 1_000) }
+        speed(100f, 7_000)
+        assertEquals(0, d.snapshot().speedings)
+    }
+
+    @Test
+    fun secondRiskyMomentSendsOneSafetyAlertToTheFamily() {
+        drive()
+        assertTrue(harshBrake(1_000).none { it is Effect.SafetyAlert })
+        val alert = harshBrake(10_000).filterIsInstance<Effect.SafetyAlert>()
+        assertEquals(listOf("운전 중 급제동이 2번 있었어요. 응원 한마디 보내 줄래요?"), alert.map { it.text })
+        assertTrue(harshBrake(20_000).none { it is Effect.SafetyAlert })
+    }
+
+    @Test
+    fun safetyAlertNamesBothKindsOfRiskyMoments() {
+        drive()
+        harshBrake(1_000)
+        val e = (0..10).flatMap { speed(120f, 5_000L + it * 1_000) }
+        assertEquals(listOf("운전 중 급제동 1번, 과속 1번이 있었어요. 응원 한마디 보내 줄래요?"),
+            e.filterIsInstance<Effect.SafetyAlert>().map { it.text })
+    }
+
+    @Test
+    fun riskyMomentsAreCountedPerDrive() {
+        drive(); harshBrake(1_000); park()
+        drive()
+        assertEquals(0, d.snapshot().harshBrakes)
+        assertTrue(harshBrake(10_000).none { it is Effect.SafetyAlert })
     }
 
     @Test
@@ -272,7 +337,8 @@ class DetectorTest {
         cmd(Command.Reset)
         val s = d.snapshot()
         assertEquals(PickupPhase.NONE, s.pickup)
-        assertEquals(0, s.pendingCheers)
+        assertEquals(0, s.cheersReceived)
+        assertEquals(0, s.harshBrakes)
         assertTrue(messages(drive()).isEmpty())
     }
 }

@@ -374,3 +374,56 @@ def test_driver_voice_command_reaches_the_car(base: str) -> None:
     cmd = inbox["commands"][-1]
     assert (cmd["type"], cmd["clip"], cmd["fallback_accept"]) == ("driver_voice", "driver_no", False)
     assert post(base + "/api/driver/voice", {"clip": "../x"})[0] == 400
+
+
+def _wav(path: Path, seconds: float = 0.5) -> None:
+    import wave
+
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\x00\x01" * int(16000 * seconds))
+
+
+def test_scenario_cheer_carries_the_family_recording(tmp_path: Path) -> None:
+    from scenario.family import FamilyHub
+    from scenario.server import DemoWorld
+
+    _wav(tmp_path / "cheer_mom.wav", seconds=1.5)
+    hub = FamilyHub()
+    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command("cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom"})
+    cmd = hub.commands_after(0)["commands"][-1]
+    assert (cmd["type"], cmd["from"], cmd["text"], cmd["duration_ms"]) == ("cheer", "엄마", "조심히 와", 1500)
+    assert "clip" not in cmd
+    data, mime = hub.audio(cmd["audio_id"])
+    assert mime == "audio/wav" and data == (tmp_path / "cheer_mom.wav").read_bytes()
+
+
+def test_scenario_cheer_without_its_recording_falls_back_to_text(tmp_path: Path) -> None:
+    from scenario.family import FamilyHub
+    from scenario.server import DemoWorld
+
+    hub = FamilyHub()
+    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command("cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom"})
+    cmd = hub.commands_after(0)["commands"][-1]
+    assert cmd["type"] == "cheer" and "audio_id" not in cmd and "clip" not in cmd
+
+
+def test_quick_reply_sends_the_family_voice_to_the_car(tmp_path: Path) -> None:
+    _wav(tmp_path / "cheer_mom_slow.wav")
+    for base in _serve(FakeConsole(), voice_dir=tmp_path):
+        status, _ = post(base + "/api/family/quick", {"clip": "cheer_mom_slow"})
+        assert status == 200
+        _, inbox = get(base + "/api/car/inbox?after=0")
+        cmd = inbox["commands"][-1]
+        assert (cmd["type"], cmd["from"]) == ("cheer", "엄마") and cmd["audio_id"]
+        _, feed = get(base + "/api/family/feed?after=0")
+        assert feed["items"][-1]["sender"] == "엄마" and "천천히" in feed["items"][-1]["text"]
+        assert post(base + "/api/family/quick", {"clip": "../driver_yes"})[0] == 400
+
+
+def test_safety_alert_from_the_car_reaches_the_family(base: str) -> None:
+    post(base + "/api/car/event", {"kind": "safety", "text": "운전 중 급제동이 2번 있었어요."})
+    _, feed = get(base + "/api/family/feed?after=0")
+    assert feed["items"][-1]["kind"] == "safety"

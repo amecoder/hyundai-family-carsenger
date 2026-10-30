@@ -32,6 +32,8 @@ body { margin: 0; background: #e6eaf1; color: var(--ink); font: 15px/1.5 "IBM Pl
 .msg.car .av { background: var(--amber); } .msg.car .b { background: var(--amber-soft); border: 1px solid var(--amber-line); }
 .msg.fam .b { background: var(--surface); border: 1px solid var(--line); }
 .msg.me { align-self: flex-end; flex-direction: row-reverse; } .msg.me .b { background: var(--teal-soft); border: 0; } .msg.me small { text-align: right; }
+.msg.safety .av { background: #c2410c; } .msg.safety .b { background: #fff1ec; border: 1px solid #f4b8a3; }
+.quick { display: inline-block; margin-top: 6px; border: 0; border-radius: 999px; padding: 6px 12px; font-size: .8rem; font-weight: 600; background: var(--teal); color: #fff; cursor: pointer; }
 .sys { align-self: center; font-size: .74rem; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 12px 0; }
 .actions button, .sheet button, .bar button { font: inherit; font-weight: 700; cursor: pointer; border-radius: 12px; border: 0; padding: 10px 12px; }
@@ -93,7 +95,7 @@ audio { width: 100%; }
       <input type="text" id="caption" maxlength="300" placeholder="한 줄 메모 (선택, 예: 조심히 와~)" aria-label="한 줄 메모">
       <div class="row"><button class="ghost" type="button" id="redo">다시 녹음</button><button class="send" type="button" id="sendCheer" style="flex:1">보내기</button></div>
     </div>
-    <p>운전 중에는 재생하지 않고, 차가 멈추면 들려 드려요.</p>
+    <p>보내면 차에서 바로 재생돼요. 운전 중에도 아빠가 들을 수 있어요.</p>
     <div class="err" id="recErr"></div>
   </div>
 
@@ -111,6 +113,8 @@ audio { width: 100%; }
   const PLACES = ["○○수학학원 앞", "집"];
   const AVATAR = { "엄마": "#9b6255", "민지": "#79619e", "아빠": "#45617b" };
   const MAX_REC_MS = 15000;
+  // one-tap voice replies to a safety alert (server QUICK_REPLIES): sender -> [clip, words]
+  const QUICK = { "엄마": ["cheer_mom_slow", "천천히 와도 돼. 안전이 제일이야"], "민지": ["cheer_minji_slow", "아빠, 천천히 와~ 사랑해"] };
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode: keep in memory only */ } } };
@@ -127,6 +131,12 @@ audio { width: 100%; }
   let items = [];
   function bubble(it) {
     if (it.kind === "cheer_played") return `<div class="sys">🔊 차에서 재생됨 · ${esc(it.text)} · ${esc(it.at)}</div>`;
+    if (it.kind === "safety") {
+      const [clip, words] = QUICK[me];
+      return `<div class="msg car safety"><span class="av">차</span>
+        <div><div class="b">⚠️ ${esc(it.text)}<br><button type="button" class="quick" data-clip="${clip}">🎙 ${esc(me)} 목소리로 "${esc(words)}"</button></div>
+        <small>현대 패밀리 카신저 안전 알림 · ${esc(it.at)}</small></div></div>`;
+    }
     const car = it.kind === "message";
     const mine = !car && it.sender === me;
     const color = car ? "" : `style="background:${AVATAR[it.sender] || "#79619e"}"`;
@@ -136,7 +146,7 @@ audio { width: 100%; }
   }
   function redraw() {
     // only what a family member would see: family posts, car notifications and played cheers (not the car's internal notes)
-    const shown = items.filter(it => it.kind === "family" || it.kind === "message" || it.kind === "cheer_played");
+    const shown = items.filter(it => ["family", "message", "cheer_played", "safety"].includes(it.kind));
     const chat = $("chat");
     if (!shown.length) {
       chat.innerHTML = '<div class="empty">아직 대화가 없어요.<br>아래에서 픽업을 요청하거나 응원 음성을 보내 보세요.</div>';
@@ -163,6 +173,13 @@ audio { width: 100%; }
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "보내지 못했어요"); }
     pollFeed();
   }
+
+  $("chat").addEventListener("click", async ev => {
+    const b = ev.target.closest("button.quick");
+    if (!b) return;
+    b.disabled = true;
+    try { await postJson("api/family/quick", { clip: b.dataset.clip }); } catch (e) { alert(e.message); b.disabled = false; }
+  });
 
   // ---- text ----
   $("bar").addEventListener("submit", async ev => {

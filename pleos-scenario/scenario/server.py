@@ -4,7 +4,9 @@ import argparse
 import json
 import logging
 import os
+import re
 import time
+import wave
 from collections.abc import Callable
 from dataclasses import asdict
 from http import HTTPStatus
@@ -33,6 +35,36 @@ LOCAL_HOSTS = ("127.0.0.1", "localhost", "10.0.2.2")
 # recorded driver answers (16 kHz mono PCM) the car feeds to speech recognition; kept outside the repo
 VOICE_CLIPS = ("driver_yes", "driver_no")
 DEFAULT_VOICE_DIR = Path(os.environ.get("PLEOS_VOICE_DIR", Path.home() / "Android" / "voice"))
+# one-tap replies the family can send after a safety alert: clip -> (sender, words in the clip)
+QUICK_REPLIES = {
+    "cheer_mom_slow": ("엄마", "천천히 와도 돼. 안전이 제일이야"),
+    "cheer_minji_slow": ("민지", "아빠, 천천히 와~ 사랑해"),
+}
+_CLIP_NAME = re.compile(r"[a-z0-9_]{1,40}")
+
+
+def load_recording(voice_dir: Path, clip: str) -> tuple[bytes, int] | None:
+    """A family voice clip (<clip>.wav) from the voice folder and its length in ms; None when it is missing."""
+    path = voice_dir / f"{clip}.wav"
+    if not _CLIP_NAME.fullmatch(clip) or not path.is_file():
+        return None
+    data = path.read_bytes()
+    with wave.open(str(path), "rb") as w:
+        duration_ms = round(w.getnframes() * 1000 / w.getframerate())
+    return data, duration_ms
+
+
+def send_cheer(hub: FamilyHub, voice_dir: Path, sender: str, text: str, clip: str | None) -> None:
+    """Cheer command for the car; attaches the recording when the voice folder has it, else the car reads the text."""
+    payload: dict[str, Any] = {"from": sender, "text": text}
+    recording = load_recording(voice_dir, clip) if clip else None
+    if recording is None:
+        if clip:
+            log.warning("voice clip %s not found in %s, the car will read the text", clip, voice_dir)
+    else:
+        data, duration_ms = recording
+        payload |= {"audio_id": hub.add_audio(data, "audio/wav"), "duration_ms": duration_ms}
+    hub.add_command("cheer", **payload)
 
 
 class Console(Protocol):
@@ -51,9 +83,10 @@ class Console(Protocol):
 class DemoWorld:
     """What scenarios act on: the emulator (via Virtual Console) and the family hub (car app inbox + family chat)."""
 
-    def __init__(self, console: Console, hub: FamilyHub) -> None:
+    def __init__(self, console: Console, hub: FamilyHub, voice_dir: Path = DEFAULT_VOICE_DIR) -> None:
         self.console = console
         self.hub = hub
+        self.voice_dir = voice_dir
 
     def gear(self, letter: str) -> None:
         self.console.gear(letter)
@@ -79,6 +112,9 @@ class DemoWorld:
     def car_command(self, type_: str, payload: dict) -> None:
         if type_ == "reset":
             self.hub.reset()
+        if type_ == "cheer":
+            send_cheer(self.hub, self.voice_dir, payload["from"], payload["text"], payload.get("clip"))
+            return
         self.hub.add_command(type_, **payload)
 
     def family_says(self, sender: str, text: str) -> None:
@@ -264,6 +300,8 @@ class Handler(BaseHTTPRequestHandler):
             self._family_cheer(parse_qs(url.query))
         elif path == "/api/driver/voice":
             self._driver_voice()
+        elif path == "/api/family/quick":
+            self._family_quick()
         elif path.startswith("/api/manual/"):
             self._manual(path.removeprefix("/api/manual/"))
         elif path.startswith("/api/run/"):
@@ -316,6 +354,16 @@ class Handler(BaseHTTPRequestHandler):
         self.app.hub.add_command("driver_voice", clip=clip, fallback_accept=clip == "driver_yes")
         self._send(HTTPStatus.OK, {"ok": True})
 
+    def _family_quick(self) -> None:
+        clip = (self._json_body() or {}).get("clip")
+        if clip not in QUICK_REPLIES:
+            self._send(HTTPStatus.BAD_REQUEST, {"error": f"clip은 {', '.join(QUICK_REPLIES)} 중 하나여야 합니다"})
+            return
+        sender, text = QUICK_REPLIES[clip]
+        self.app.hub.family_says(sender, f"🎙 빠른 답장 \"{text}\"")
+        send_cheer(self.app.hub, self.app.voice_dir, sender, text, clip)
+        self._send(HTTPStatus.OK, {"ok": True})
+
     def _family_cheer(self, query: dict[str, list[str]]) -> None:
         # the body is the raw recording; who sent it and an optional caption ride in the query string
         sender = query.get("sender", [""])[0]
@@ -363,7 +411,7 @@ def make_server(console: Console, host: str = "127.0.0.1", port: int = 8090,
                 sleep: Callable[[float], None] = time.sleep, hub: FamilyHub | None = None,
                 grabber: ScreenGrabber | None = None, voice_dir: Path = DEFAULT_VOICE_DIR) -> ScenarioServer:
     hub = hub or FamilyHub()
-    runner = ScenarioRunner(DemoWorld(console, hub), sleep=sleep)
+    runner = ScenarioRunner(DemoWorld(console, hub, voice_dir), sleep=sleep)
     return ScenarioServer((host, port), console, hub, runner, grabber, voice_dir)
 
 

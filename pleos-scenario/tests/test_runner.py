@@ -98,6 +98,23 @@ def test_stop_request_interrupts_and_parks_safely() -> None:
     assert client.calls[-2:] == [("controls", 0, 0, 100), ("gear", "P")]
 
 
+def test_stop_request_brakes_gently_so_the_car_does_not_report_harsh_braking() -> None:
+    from scenario.scenarios import TICK_S
+
+    sc = Scenario("t", "테스트", "", (Step("주행", "", "", (Gear("D"), Cruise(80, seconds=60))),))
+    client = RecordingClient()
+    r = ScenarioRunner(client, sleep=lambda _: threading.Event().wait(0.01))
+    r.start(sc)
+    threading.Event().wait(0.05)
+    r.stop()
+    r.join(timeout=10)
+    speeds = [c[1] for c in client.calls if c[0] == "controls"]
+    braking = speeds[speeds.index(80) + speeds.count(80):]
+    assert braking[-1] == 0 and client.calls[-1] == ("gear", "P")
+    drops = [a - b for a, b in zip([80, *braking], braking)]
+    assert max(drops) <= 20 * TICK_S + 1  # at most ~20 km/h per second, below the car's harsh-braking threshold
+
+
 def test_cannot_start_while_running() -> None:
     sc = Scenario("t", "테스트", "", (Step("주행", "", "", (Cruise(80, seconds=60),)),))
     r = ScenarioRunner(RecordingClient(), sleep=lambda _: threading.Event().wait(0.01))
@@ -212,12 +229,11 @@ def test_pickup_decline_scenario_sends_a_refusal_while_driving() -> None:
     assert _index(calls, ("gear", "D")) < _index(calls, ("car", "driver_voice")) < _index(calls, ("gear", "P"))
 
 
-def test_many_cheers_scenario_queues_four_cheers_before_two_stops() -> None:
+def test_many_cheers_scenario_sends_four_cheers_while_driving() -> None:
     calls = _calls("many_cheers")
     cheers = [i for i, c in enumerate(calls) if c[:2] == ("car", "cheer")]
-    parks = [i for i, c in enumerate(calls) if c == ("gear", "P")]
-    assert len(cheers) == 4 and len(parks) == 2
-    assert max(cheers) < parks[0]  # all four arrive before the first stop, so only three can play there
+    drive, park = _index(calls, ("gear", "D")), _index(calls, ("gear", "P"))
+    assert len(cheers) == 4 and all(drive < i < park for i in cheers)  # all arrive mid-drive and play right away
 
 
 def test_solo_long_drive_has_rest_threshold_and_no_cheer() -> None:
@@ -247,3 +263,58 @@ def test_pickups_to_known_places_carry_coordinates_for_the_navigation() -> None:
     pickup = next(c for c in calls if c[:2] == ("car", "pickup_request"))
     fields = dict(pickup[2])
     assert (fields["lat"], fields["lon"]) == PLACES[fields["place"]]
+
+
+def _payload(call: tuple) -> dict:
+    return dict(call[2])
+
+
+def test_every_scenario_names_where_the_trip_starts_and_ends() -> None:
+    trips = []
+    for sc in SCENARIOS:
+        client = RecordingClient()
+        run_sync(sc, client)
+        trips.append(_payload(next(c for c in client.calls if c[:2] == ("car", "set_trip"))))
+    assert all(t["origin"] and t["destination"] for t in trips)
+    assert len({t["destination"] for t in trips}) >= 6
+    assert len({t["origin"] for t in trips}) >= 6
+
+
+def test_every_scenario_cheer_brings_a_family_recording() -> None:
+    for sc in SCENARIOS:
+        client = RecordingClient()
+        run_sync(sc, client)
+        for c in client.calls:
+            if c[:2] == ("car", "cheer"):
+                assert _payload(c)["clip"].startswith("cheer_"), (sc.id, c)
+
+
+def _max_braking_kph_per_s(calls: list[tuple]) -> float:
+    from scenario.scenarios import TICK_S
+
+    speeds = [c[1] for c in calls if c[0] == "controls"]
+    k = 4  # compare speeds ~1.2 s apart, the way the car app measures braking over a 1 s window
+    return max((speeds[i - k] - speeds[i]) / (k * TICK_S) for i in range(k, len(speeds))) if len(speeds) > k else 0
+
+
+def test_only_the_safety_scenario_brakes_hard_enough_to_alert() -> None:
+    for sc in SCENARIOS:
+        client = RecordingClient()
+        run_sync(sc, client)
+        rate = _max_braking_kph_per_s(client.calls)
+        if sc.id == "safe_driving":
+            assert rate >= 30, rate
+        else:
+            assert rate < 30, (sc.id, rate)
+
+
+def test_safety_scenario_speeds_for_ten_seconds_then_mom_answers_the_alert() -> None:
+    from scenario.scenarios import TICK_S
+
+    calls = _calls("safe_driving")
+    over = [c for c in calls if c[0] == "controls" and c[1] > 110]
+    assert len(over) * TICK_S >= 10
+    hard_brake = max(i for i, c in enumerate(calls) if c[0] == "controls" and c[3] == 100 and c[1] > 0)
+    reply = next(i for i, c in enumerate(calls) if c[:2] == ("car", "cheer"))
+    assert hard_brake < reply < _index(calls, ("gear", "P"))
+    assert _payload(calls[reply])["clip"] == "cheer_mom_slow"

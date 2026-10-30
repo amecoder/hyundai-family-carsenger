@@ -83,13 +83,15 @@ function startAudioCapture(file) {
   await phone.locator("#recBtn").click();
   await phone.locator("#caption").fill("조심히 와~ 저녁 준비해 둘게");
   await phone.locator("#sendCheer").click();
-  await page.waitForTimeout(5000);
-
-  step("arrive home and park: the recording plays");
-  carAppToFront();
-  await manual("park", 0);
+  step("the recording plays in the car right away, while driving");
   await chat("차에서 재생됨");
   await page.waitForTimeout(5000);
+
+  step("arrive home and park");
+  carAppToFront();
+  await manual("park", 0);
+  await chat("집에 도착해서 주차했어요");
+  await page.waitForTimeout(4000);
   await page.screenshot({ path: `${out}/family_demo_end.png` });
 
   const video = page.video();

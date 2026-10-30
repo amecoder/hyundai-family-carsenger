@@ -7,16 +7,33 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from scenario.scenarios import Scenario, Vehicle
+from scenario.scenarios import TICK_S, Scenario, Vehicle
 
 log = logging.getLogger(__name__)
+
+PARK_BRAKE_KPH_PER_S = 20  # gentle enough that the car app does not count the stop as harsh braking
+
+
+class _SpeedMemo:
+    """Passes everything to the vehicle and remembers the last commanded speed, so a stop request can brake from it."""
+
+    def __init__(self, vehicle: Vehicle) -> None:
+        self._vehicle = vehicle
+        self.last_kph = 0.0
+
+    def controls(self, speed_kph: float, accelerator: float, brake: float) -> None:
+        self._vehicle.controls(speed_kph, accelerator=accelerator, brake=brake)
+        self.last_kph = speed_kph
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._vehicle, name)
 
 
 class ScenarioRunner:
     """Runs one scenario at a time on a background thread; status() is safe to poll from the web server."""
 
     def __init__(self, vehicle: Vehicle, sleep: Callable[[float], None] = time.sleep, keepalive_interval: float = 1.0) -> None:
-        self._vehicle = vehicle
+        self._vehicle = _SpeedMemo(vehicle)
         self._sleep = sleep
         self._keepalive_interval = keepalive_interval
         self._client_id = f"gajokseok-runner-{uuid.uuid4().hex[:8]}"
@@ -85,5 +102,11 @@ class ScenarioRunner:
             done.set()
 
     def _park_safely(self) -> None:
+        step = PARK_BRAKE_KPH_PER_S * TICK_S
+        kph = self._vehicle.last_kph
+        while kph > step:
+            kph -= step
+            self._vehicle.controls(kph, accelerator=0, brake=70)
+            self._sleep(TICK_S)
         self._vehicle.controls(0, accelerator=0, brake=100)
         self._vehicle.gear("P")

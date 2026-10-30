@@ -3,6 +3,7 @@ plugins { id("com.android.application") }
 android {
     namespace = "dev.gajokseok.car"
     compileSdk = 36
+    useLibrary("android.car")
     defaultConfig {
         applicationId = "dev.gajokseok.car"
         minSdk = 28

@@ -8,7 +8,7 @@ from typing import Any
 
 # Demo stand-in for the family server: the car app posts events here and polls commands; the runner page reads the feed.
 
-CAR_EVENT_KINDS = {"message", "speak", "note", "cheer_played"}
+CAR_EVENT_KINDS = {"message", "speak", "note", "cheer_played", "safety"}
 FAMILY_SENDERS = ("엄마", "민지")
 MAX_AUDIO_BYTES = 2 * 1024 * 1024
 MAX_AUDIO_CLIPS = 20

@@ -51,6 +51,7 @@ class MainActivity : Activity() {
     private lateinit var tripValue: TextView
     private lateinit var pickupValue: TextView
     private lateinit var cheerValue: TextView
+    private lateinit var safetyValue: TextView
     private lateinit var linkValue: TextView
     private lateinit var noteBar: TextView
     private lateinit var driveBanner: TextView
@@ -158,6 +159,7 @@ class MainActivity : Activity() {
                 is Effect.ShowScreen -> show(e.screen)
                 is Effect.Note -> { showNote(e.text); link.post("note", e.text) }
                 is Effect.Banner -> { driveBanner.text = e.text ?: ""; driveBanner.gone(e.text == null) }
+                is Effect.SafetyAlert -> { addBubble("차", e.text, fromCar = true); link.post("safety", e.text) }
             }
         }
         refreshStatus()
@@ -203,8 +205,8 @@ class MainActivity : Activity() {
     private fun showCheer(e: Effect.PlayCheer) {
         cheerTitle.text = "${e.from}의 목소리"
         cheerText.text = e.text
-        cheerMeta.text = if (e.audioUrl != null) "녹음 ${clipLength(e.durationMs)} · 정차 중에만 재생 · 출발하면 바로 멈춰요"
-        else "녹음 없음 · 문구를 음성으로 읽어요 · 출발하면 바로 멈춰요"
+        cheerMeta.text = if (e.audioUrl != null) "녹음 ${clipLength(e.durationMs)} · 받는 즉시 재생"
+        else "녹음 없음 · 문구를 음성으로 읽어요"
         cheerCard.gone(false)
         startBars()
         link.post("cheer_played", "${e.from}: ${e.text}")
@@ -234,7 +236,7 @@ class MainActivity : Activity() {
         statusPill.text = if (moving) "● 주행 중" else "● 정차 중 · 기어 ${gearLabel(s.gear)}"
         statusPill.setTextColor(if (moving) Palette.amber else Palette.green)
         stateValue.text = if (moving) "주행 중 · 기어 D" else "정차 중 · 기어 ${gearLabel(s.gear)}"
-        tripValue.text = s.trip?.let { "${it.destination} · 약 ${it.etaMin}분" } ?: "설정된 목적지 없음"
+        tripValue.text = s.trip?.let { "${it.origin} → ${it.destination} · 약 ${it.etaMin}분" } ?: "설정된 목적지 없음"
         pickupValue.text = when (s.pickup) {
             PickupPhase.NONE -> "요청 없음"
             PickupPhase.REQUESTED -> "요청 받음 · 운전자 확인 대기"
@@ -242,7 +244,8 @@ class MainActivity : Activity() {
             PickupPhase.ARRIVED -> "${s.pickupPlace} 도착 · 탑승 대기"
             PickupPhase.BOARDED -> "뒷좌석 탑승 확인됨"
         }
-        cheerValue.text = if (s.pendingCheers == 0) "없음" else "${s.pendingCheers}개 · 멈추면 재생"
+        cheerValue.text = if (s.cheersReceived == 0) "없음" else "${s.cheersReceived}개 · 받는 즉시 재생"
+        safetyValue.text = if (s.harshBrakes + s.speedings == 0) "이번 주행 급제동·과속 없음" else "이번 주행 급제동 ${s.harshBrakes}번 · 과속 ${s.speedings}번"
     }
 
     private fun gearLabel(g: GearState) = when (g) {
@@ -319,9 +322,10 @@ class MainActivity : Activity() {
         right.addView(label("차량과 가족", 22f, bold = true))
         right.addView(buildMyCar())
         stateValue = statusRow(right, "현재 상태")
-        tripValue = statusRow(right, "다음 목적지")
+        tripValue = statusRow(right, "오늘 경로")
         pickupValue = statusRow(right, "픽업")
-        cheerValue = statusRow(right, "도착하면 들을 응원")
+        cheerValue = statusRow(right, "오늘 받은 응원")
+        safetyValue = statusRow(right, "안전 운전")
         linkValue = label("○ 가족 서버 연결 확인 중", 16f, Palette.muted)
         right.addView(linkValue)
         right.addView(label("주행을 시작하면 화면 대신 음성으로 안내합니다", 15f, Palette.muted))
