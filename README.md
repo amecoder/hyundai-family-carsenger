@@ -4,9 +4,9 @@
 
 ## 시연 영상 (46초, 소리 포함)
 
-[![시연 영상 미리보기 — 누르면 소리 있는 영상이 열립니다](docs/demo/carsenger_demo_preview.gif)](docs/demo/carsenger_demo.mp4)
+[![시연 영상 미리보기 — 누르면 소리 있는 영상이 열립니다](docs/demo/carsenger_demo_preview.gif)](https://amecoder.github.io/hyundai-family-carsenger/)
 
-**▶ [소리 있는 영상 보기 (mp4)](docs/demo/carsenger_demo.mp4)** — 위 미리보기는 소리가 없습니다.
+**▶ [소리 있는 영상 보기](https://amecoder.github.io/hyundai-family-carsenger/)** — 위 미리보기는 소리가 없습니다. 브라우저에서 바로 재생됩니다(GitHub Pages). 파일로 받으려면 [`docs/demo/carsenger_demo.mp4`](docs/demo/carsenger_demo.mp4).
 
 Pleos 에뮬레이터(가운데)와 가족 웹(오른쪽, 엄마·민지 폰 역할)을 함께 녹화했습니다. 소리는 에뮬레이터의 차량 음성 안내와 응원 재생입니다.
 

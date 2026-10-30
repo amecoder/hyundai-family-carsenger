@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>현대 패밀리 카신저 시연 영상</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --link: #0969da; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --link: #4493f8; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif; line-height: 1.6; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 16px; }
+  video { width: 100%; height: auto; border-radius: 8px; background: #000; }
+  ol { padding-left: 1.3em; }
+  a { color: var(--link); }
+  .note { color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>현대 패밀리 카신저 — 시연 영상</h1>
+  <p class="sub">팀 nemo · 현대자동차그룹 차량용 앱 개발 공모전 출품작 · 46초, 소리 포함</p>
+  <video controls preload="metadata" poster="demo/carsenger_demo_preview.gif">
+    <source src="demo/carsenger_demo.mp4" type="video/mp4">
+    브라우저가 영상을 재생하지 못하면 <a href="demo/carsenger_demo.mp4">mp4 파일</a>을 내려받아 보세요.
+  </video>
+  <ol>
+    <li>민지가 가족 웹에서 「데리러 와」(○○수학학원 앞)를 보내면, 차가 "경유지로 추가할까요?"라고 묻습니다.</li>
+    <li>운전자가 "응, 추가해 줘"라고 답하면 음성 인식으로 승인되고, 내비에 경로가 잡히며, 가족방에 "가는 중"이 전해집니다.</li>
+    <li>학원에 도착하면 차가 도착을 알리고, 뒷좌석 문·착석으로 민지의 탑승을 확인해 가족에게 알립니다.</li>
+    <li>집으로 가는 동안 엄마가 응원을 녹음해 보내면, 주행 중에는 기다렸다가 집에 도착해 정차했을 때 차에서 재생합니다.</li>
+  </ol>
+  <p class="note">Pleos 에뮬레이터(가운데)와 가족 웹(오른쪽)을 함께 녹화했습니다. 운전자 목소리와 엄마의 녹음은 공개 TTS로 만든 음성을 마이크 대신 넣었고, 차량 신호는 Virtual Console을 자동으로 조작했습니다.</p>
+  <p><a href="https://github.com/amecoder/hyundai-family-carsenger">소스 코드와 APK (GitHub 저장소)</a></p>
+</main>
+</body>
+</html>
