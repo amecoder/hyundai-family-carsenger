@@ -332,9 +332,8 @@ def test_cheer_posts_chat_bubble_and_car_command_as_one_call() -> None:
 
 
 def test_voice_note_names_clova_dubbing_not_public_tts() -> None:
-    # the demo voices are CLOVA Dubbing recordings since 10-31; the subtitle is burned into the submitted videos
-    from scenario.scenarios import SCENARIOS
-
+    # the narration is burned into the submitted videos as a subtitle, so it must name the voices actually used
     texts = [s.narration for sc in SCENARIOS for s in sc.steps]
     assert not [t for t in texts if "공개 TTS" in t]
-    assert any("클로바더빙 녹음" in t for t in texts)
+    voiced = [t for t in texts if "음성 인식(STT)으로" in t]
+    assert len(voiced) >= 2 and all("클로바더빙 녹음" in t for t in voiced)
