@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import time
 import wave
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import parse_qs, urlparse
 
+from scenario.analytics import EVENTS, EventStore, retention
 from scenario.family import FAMILY_SENDERS, MAX_AUDIO_BYTES, FamilyHub
 from scenario.runner import ScenarioRunner
 from scenario.scenarios import MANUAL, SCENARIOS, find, pickup_fields
@@ -25,6 +27,12 @@ log = logging.getLogger(__name__)
 STATIC = Path(__file__).resolve().parent.parent / "static"
 INDEX = STATIC / "index.html"
 FAMILY_PAGE = STATIC / "family.html"
+ANALYTICS_PAGE = STATIC / "analytics.html"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+# the demo serves one family; the event store itself keys every row by family
+DEFAULT_FAMILY_ID = os.environ.get("CARSENGER_FAMILY_ID", "demo-family")
+# the car reports asynchronously and polls its inbox, so a cheer a scenario queued can be reported after the run ends
+SCRIPTED_GRACE_S = 30.0
 MAX_BODY = 64 * 1024
 MAX_FAMILY_TEXT = 300
 MAX_PLACE = 40
@@ -34,6 +42,10 @@ MAX_CLIP_MS = 60_000
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "10.0.2.2")
 # recorded driver answers (16 kHz mono PCM) the car feeds to speech recognition; kept outside the repo
 VOICE_CLIPS = ("driver_yes", "driver_no")
+# the car's answers to a pickup request: each request is answered once
+PICKUP_ANSWERS = frozenset({"pickup_accepted", "pickup_declined", "pickup_timed_out"})
+# the car's settings card switches (gajokseok-car DriverSettings); the runner can stand in for the driver's taps
+DRIVER_SETTINGS = ("cheer_voice", "safety_alert", "usage_recording")
 DEFAULT_VOICE_DIR = Path(os.environ.get("PLEOS_VOICE_DIR", Path.home() / "Android" / "voice"))
 # one-tap replies the family can send after a safety alert: clip -> (sender, words in the clip)
 QUICK_REPLIES = {
@@ -58,9 +70,9 @@ def load_recording(voice_dir: Path, clip: str) -> tuple[bytes, int] | None:
     return data, duration_ms
 
 
-def send_cheer(hub: FamilyHub, voice_dir: Path, sender: str, text: str, clip: str | None) -> None:
-    """Cheer command for the car; attaches the recording when the voice folder has it, else the car reads the text."""
-    payload: dict[str, Any] = {"from": sender, "text": text}
+def send_cheer(hub: FamilyHub, voice_dir: Path, sender: str, text: str, clip: str | None, feed_text: str) -> None:
+    """Chat bubble plus cheer command for the car; attaches the recording when the voice folder has it, else the car reads the text."""
+    payload: dict[str, Any] = {}
     recording = load_recording(voice_dir, clip) if clip else None
     if recording is None:
         if clip:
@@ -68,7 +80,7 @@ def send_cheer(hub: FamilyHub, voice_dir: Path, sender: str, text: str, clip: st
     else:
         data, duration_ms = recording
         payload |= {"audio_id": hub.add_audio(data, "audio/wav"), "duration_ms": duration_ms}
-    hub.add_command("cheer", **payload)
+    hub.family_cheer(sender, feed_text, text, **payload)
 
 
 class Console(Protocol):
@@ -117,7 +129,7 @@ class DemoWorld:
         if type_ == "reset":
             self.hub.reset()
         if type_ == "cheer":
-            send_cheer(self.hub, self.voice_dir, payload["from"], payload["text"], payload.get("clip"))
+            send_cheer(self.hub, self.voice_dir, payload["from"], payload["text"], payload.get("clip"), payload["feed_text"])
             return
         self.hub.add_command(type_, **payload)
 
@@ -157,13 +169,36 @@ def scenario_payload() -> list[dict[str, Any]]:
 
 class ScenarioServer(ThreadingHTTPServer):
     def __init__(self, addr: tuple[str, int], console: Console, hub: FamilyHub, runner: ScenarioRunner,
-                 grabber: ScreenGrabber | None, voice_dir: Path = DEFAULT_VOICE_DIR) -> None:
+                 grabber: ScreenGrabber | None, voice_dir: Path = DEFAULT_VOICE_DIR,
+                 analytics: EventStore | None = None, family_id: str = DEFAULT_FAMILY_ID) -> None:
         super().__init__(addr, Handler)
+        self.analytics = analytics
+        self.family_id = family_id
         self.voice_dir = voice_dir
         self.console = console
         self.hub = hub
         self.runner = runner
         self.grabber = grabber
+
+    def track(self, actor: str, event: str, *, from_car: bool = False) -> None:
+        """Record a usage event if the family consented. Only the car's reports can come from a scripted demo run;
+        a family action is a person tapping the app, so a rehearsal counts as real use too.
+        Recording must never break the family room, so a database error is logged and dropped."""
+        if self.analytics is None:
+            return
+        source = self._car_source() if from_car else "live"
+        try:
+            self.analytics.record(self.family_id, actor, event, source=source)
+        except sqlite3.Error:
+            log.exception("사용 기록 저장 실패: %s", event)
+
+    def _car_source(self) -> str:
+        status = self.runner.status()
+        demo = status["scenario"] is not None and not str(status["scenario"]).startswith("manual_")
+        ended = status["scripted_ended_at"]
+        recent = ended is not None and time.time() - ended < SCRIPTED_GRACE_S
+        scripted = (demo and status["state"] == "running") or recent
+        return "scripted" if scripted else "live"
 
 
 def _int_param(query: dict[str, list[str]], name: str) -> int:
@@ -246,10 +281,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, self.app.hub.commands_after(_int_param(query, "after")))
         elif url.path == "/api/family/feed":
             self._send(HTTPStatus.OK, self.app.hub.feed_after(_int_param(query, "after")))
+        elif url.path == "/api/sounds":
+            self._sounds(query)
         elif url.path == "/api/screen":
             self._screen()
         elif url.path == "/family":
             self._send(HTTPStatus.OK, FAMILY_PAGE.read_bytes(), "text/html; charset=utf-8")
+            # the phone frame inside the runner page (embed=1) is the presenter's screen, not a family visit
+            if query.get("embed") != ["1"]:
+                self.app.track("가족 웹", "family_room_opened")
+        elif url.path == "/analytics":
+            self._send(HTTPStatus.OK, ANALYTICS_PAGE.read_bytes(), "text/html; charset=utf-8")
+        elif url.path == "/api/analytics":
+            self._analytics_report(query)
         elif url.path.startswith("/api/audio/"):
             self._audio(url.path.removeprefix("/api/audio/"))
         elif url.path.startswith("/api/voice/"):
@@ -274,12 +318,21 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(HTTPStatus.OK, image, ctype)
 
+    def _sounds(self, query: dict[str, list[str]]) -> None:
+        try:
+            since = float(query.get("since", ["0"])[0])
+        except ValueError:
+            self._send(HTTPStatus.BAD_REQUEST, {"error": "since는 초 단위 숫자여야 합니다"})
+            return
+        self._send(HTTPStatus.OK, {"sounds": self.app.hub.sounds_since(since)})
+
     def _audio(self, clip_id: str) -> None:
         clip = self.app.hub.audio(clip_id)
         if clip is None:
             self._send(HTTPStatus.NOT_FOUND, {"error": "없는 녹음입니다"})
-        else:
-            self._send(HTTPStatus.OK, clip[0], clip[1])
+            return
+        self.app.hub.audio_served(clip_id)
+        self._send(HTTPStatus.OK, clip[0], clip[1])
 
     def _voice(self, name: str) -> None:
         # only the fixed clip names, so the path can never leave the voice folder
@@ -304,8 +357,12 @@ class Handler(BaseHTTPRequestHandler):
             self._family_cheer(parse_qs(url.query))
         elif path == "/api/driver/voice":
             self._driver_voice()
+        elif path == "/api/driver/settings":
+            self._driver_settings()
         elif path == "/api/family/quick":
             self._family_quick()
+        elif path == "/api/analytics/consent":
+            self._analytics_consent()
         elif path.startswith("/api/manual/"):
             self._manual(path.removeprefix("/api/manual/"))
         elif path.startswith("/api/run/"):
@@ -324,10 +381,22 @@ class Handler(BaseHTTPRequestHandler):
             if not body or not isinstance(body.get("text"), str) or not isinstance(body.get("kind"), str):
                 self._send(HTTPStatus.BAD_REQUEST, {"error": "kind와 text가 필요합니다"})
                 return
-            self.app.hub.car_event(body["kind"], body["text"][:500])
+            matched = self.app.hub.car_event(body["kind"], body["text"][:500])
+            event = body.get("event")
+            # the car may only report car-side events; anything else is ignored, the message still goes through
+            if isinstance(event, str) and EVENTS.get(event) == "car" and self._backed_by_family(event, matched):
+                self.app.track("차", event, from_car=True)
             self._send(HTTPStatus.OK, {"ok": True})
         else:
             self._send(HTTPStatus.NOT_FOUND, {"error": "없는 경로입니다"})
+
+    def _backed_by_family(self, event: str, cheer_matched: bool) -> bool:
+        """An exchange the car reports must answer something the family really sent, so it cannot inflate the North Star."""
+        if event == "cheer_played":
+            return cheer_matched
+        if event in PICKUP_ANSWERS:
+            return self.app.hub.answer_pickup()
+        return True
 
     def _family_say(self) -> None:
         # family chat text stays in the family room: reading messages aloud while driving was rejected in the plan
@@ -337,6 +406,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.BAD_REQUEST, {"error": f"보내는 사람과 {MAX_FAMILY_TEXT}자 이하의 글이 필요합니다"})
             return
         self.app.hub.family_says(body["sender"], text)
+        self.app.track(body["sender"], "family_message_sent")
         self._send(HTTPStatus.OK, {"ok": True})
 
     def _family_pickup(self) -> None:
@@ -348,6 +418,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.app.hub.family_says(sender, f"데리러 와 · {place}")
         self.app.hub.add_command("pickup_request", **dict(pickup_fields(sender, place, PICKUP_ETA_MIN)))
+        self.app.track(sender, "pickup_requested")
         self._send(HTTPStatus.OK, {"ok": True})
 
     def _driver_voice(self) -> None:
@@ -358,14 +429,24 @@ class Handler(BaseHTTPRequestHandler):
         self.app.hub.add_command("driver_voice", clip=clip, fallback_accept=clip == "driver_yes")
         self._send(HTTPStatus.OK, {"ok": True})
 
+    def _driver_settings(self) -> None:
+        body = self._json_body() or {}
+        # usage_recording is optional: the runner's buttons leave the usage log to the driver's own switch
+        given = [k for k in DRIVER_SETTINGS if k in body]
+        if not {"cheer_voice", "safety_alert"} <= set(given) or not all(isinstance(body[k], bool) for k in given):
+            self._send(HTTPStatus.BAD_REQUEST, {"error": "cheer_voice·safety_alert(선택: usage_recording)는 true/false여야 합니다"})
+            return
+        self.app.hub.add_command("driver_settings", **{k: body[k] for k in given})
+        self._send(HTTPStatus.OK, {"ok": True})
+
     def _family_quick(self) -> None:
         clip = (self._json_body() or {}).get("clip")
         if not isinstance(clip, str) or clip not in QUICK_REPLIES:
             self._send(HTTPStatus.BAD_REQUEST, {"error": f"clip은 {', '.join(QUICK_REPLIES)} 중 하나여야 합니다"})
             return
         sender, text = QUICK_REPLIES[clip]
-        self.app.hub.family_says(sender, f"🎙 빠른 답장 \"{text}\"")
-        send_cheer(self.app.hub, self.app.voice_dir, sender, text, clip)
+        send_cheer(self.app.hub, self.app.voice_dir, sender, text, clip, f"🎙 빠른 답장 \"{text}\"")
+        self.app.track(sender, "quick_reply_sent")
         self._send(HTTPStatus.OK, {"ok": True})
 
     def _family_cheer(self, query: dict[str, list[str]]) -> None:
@@ -392,10 +473,43 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             self._send(HTTPStatus.BAD_REQUEST, {"error": str(e)})
             return
-        self.app.hub.family_says(sender, f"🎙 응원 음성 ({_clip_length(duration_ms)}) \"{caption}\"")
-        self.app.hub.add_command("cheer", **{"from": sender, "text": caption, "audio_id": clip_id,
-                                             "duration_ms": duration_ms})
+        self.app.hub.family_cheer(sender, f"🎙 응원 음성 ({_clip_length(duration_ms)}) \"{caption}\"", caption,
+                                  audio_id=clip_id, duration_ms=duration_ms)
+        self.app.track(sender, "cheer_sent")
         self._send(HTTPStatus.OK, {"audio_id": clip_id})
+
+    def _analytics_consent(self) -> None:
+        store = self.app.analytics
+        if store is None:
+            self._send(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "사용 기록이 꺼져 있습니다"})
+            return
+        granted = (self._json_body() or {}).get("granted")
+        if not isinstance(granted, bool):
+            self._send(HTTPStatus.BAD_REQUEST, {"error": "granted는 true 또는 false여야 합니다"})
+            return
+        try:
+            store.set_consent(self.app.family_id, granted)
+        except sqlite3.Error:
+            log.exception("동의 저장 실패")
+            self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "동의를 저장하지 못했습니다. 잠시 후 다시 시도하세요"})
+            return
+        self._send(HTTPStatus.OK, {"consent": granted})
+
+    def _analytics_report(self, query: dict[str, list[str]]) -> None:
+        store = self.app.analytics
+        if store is None:
+            self._send(HTTPStatus.OK, {"enabled": False})
+            return
+        weeks = min(max(_int_param(query, "weeks") or 4, 1), 12)
+        try:
+            rows = store.rows()
+            consent = store.consented(self.app.family_id)
+        except sqlite3.Error:
+            log.exception("사용 기록 읽기 실패")
+            self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "사용 기록을 읽지 못했습니다"})
+            return
+        self._send(HTTPStatus.OK, {"enabled": True, "consent": consent, "events": len(rows),
+                                   "retention": retention(rows, time.time(), weeks)})
 
     def _manual(self, action: str) -> None:
         scenario = MANUAL.get(action)
@@ -413,10 +527,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def make_server(console: Console, host: str = "127.0.0.1", port: int = 8090,
                 sleep: Callable[[float], None] = time.sleep, hub: FamilyHub | None = None,
-                grabber: ScreenGrabber | None = None, voice_dir: Path = DEFAULT_VOICE_DIR) -> ScenarioServer:
+                grabber: ScreenGrabber | None = None, voice_dir: Path = DEFAULT_VOICE_DIR,
+                analytics: EventStore | None = None, family_id: str = DEFAULT_FAMILY_ID) -> ScenarioServer:
     hub = hub or FamilyHub()
     runner = ScenarioRunner(DemoWorld(console, hub, voice_dir), sleep=sleep)
-    return ScenarioServer((host, port), console, hub, runner, grabber, voice_dir)
+    return ScenarioServer((host, port), console, hub, runner, grabber, voice_dir, analytics, family_id)
 
 
 def main() -> None:
@@ -425,10 +540,12 @@ def main() -> None:
     parser.add_argument("--console", default="http://127.0.0.1:8088", help="Virtual Console 주소")
     parser.add_argument("--adb", default=default_adb(), help="에뮬레이터 화면 캡처에 쓸 adb 경로")
     parser.add_argument("--no-screen", action="store_true", help="에뮬레이터 화면 캡처를 끈다")
+    parser.add_argument("--no-analytics", action="store_true", help="사용 기록(재방문율 측정)을 끈다")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     grabber = None if args.no_screen else ScreenGrabber(adb_capture(args.adb), resize=pillow_resize())
-    srv = make_server(VirtualConsoleClient(args.console), port=args.port, grabber=grabber)
+    analytics = None if args.no_analytics else EventStore(DATA_DIR / "analytics.sqlite", DATA_DIR / "analytics.salt")
+    srv = make_server(VirtualConsoleClient(args.console), port=args.port, grabber=grabber, analytics=analytics)
     # 0.0.0.0 is not needed: the emulator reaches 127.0.0.1 through its 10.0.2.2 alias
     log.info("시나리오 실행기: http://127.0.0.1:%d (Virtual Console: %s)", args.port, args.console)
     try:

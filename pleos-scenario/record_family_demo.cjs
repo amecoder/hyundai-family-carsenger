@@ -1,11 +1,12 @@
 // Records the hands-on family app demo against the real emulator: family app (iframe) + manual controls + taps on the car screen.
 // Usage: PW_CORE=<playwright-core dir> CHROME=<chromium binary> [ADB=<adb>] [PLEOS_VOICE_DIR=<dir>] node record_family_demo.cjs <out dir>
 // Needs ./start_demo.sh running. The family's cheer is cheer_mom.wav from the voice folder fed as Chrome's microphone;
-// the emulator's sound is recorded from the PC's default audio output and muxed into family_demo.mp4 (needs parecord + ffmpeg).
-const { execFileSync, spawn } = require("child_process");
+// the car's sounds are rebuilt from the runner's sound log (demo_audio.cjs) and muxed into family_demo.mp4 (needs uv + ffmpeg).
+const { execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const { chromium } = require(process.env.PW_CORE);
+const { collectSounds, muxWithSounds, addVoiceCredit, driverOptsInForDemo } = require("./demo_audio.cjs");
 
 const BASE = "http://127.0.0.1:8090";
 const VOICE_DIR = process.env.PLEOS_VOICE_DIR || `${process.env.HOME}/Android/voice`;
@@ -14,12 +15,6 @@ const adb = (...args) => execFileSync(ADB, args, { encoding: "utf8" });
 
 // the car app is frozen by Android while it is in the background, so keep it in front
 const carAppToFront = () => adb("shell", "am", "start", "--user", "10", "-n", "dev.gajokseok.car/.MainActivity");
-
-// the emulator plays through the PC's default output; its monitor source carries the car's voice and the cheer
-function startAudioCapture(file) {
-  const sink = execFileSync("pactl", ["get-default-sink"], { encoding: "utf8" }).trim();
-  return spawn("parecord", ["-d", `${sink}.monitor`, "--file-format=wav", file], { stdio: "ignore" });
-}
 
 (async () => {
   const out = process.argv[2];
@@ -30,11 +25,9 @@ function startAudioCapture(file) {
   });
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 }, recordVideo: { dir: out, size: { width: 1600, height: 900 } } });
   await context.grantPermissions(["microphone"], { origin: BASE });
+  await addVoiceCredit(context);
+  const videoStart = Date.now(); // the page's video starts when the page is created
   const page = await context.newPage();
-  const videoStart = Date.now();
-  const audioFile = path.join(out, "car_audio.wav");
-  const audio = startAudioCapture(audioFile);
-  const audioStart = Date.now();
   const phone = page.frameLocator("iframe.phone");
   const chat = text => phone.locator(".chat").getByText(text).first().waitFor({ timeout: 30000 });
   const manual = async (action, settleMs = 0) => {
@@ -47,6 +40,7 @@ function startAudioCapture(file) {
   await page.goto(BASE + "/");
   await phone.locator("#link:has-text('연결됨')").waitFor();
   carAppToFront();
+  await driverOptsInForDemo(BASE); // after the car app is up, so it cannot miss the command
 
   step("reset");
   await manual("reset", 2500);
@@ -96,14 +90,12 @@ function startAudioCapture(file) {
 
   const video = page.video();
   await context.close();
-  audio.kill("SIGINT");
   await browser.close();
   const webm = await video.path();
-  await new Promise(r => setTimeout(r, 1000));
   const mp4 = path.join(out, "family_demo.mp4");
-  const offset = ((audioStart - videoStart) / 1000).toFixed(2);
-  execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", webm, "-itsoffset", offset, "-i", audioFile,
-    "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "28",
-    "-af", "loudnorm=I=-18:TP=-2", "-c:a", "aac", "-b:a", "128k", "-shortest", mp4]);
-  console.log("video", mp4);
+  const sounds = await collectSounds(BASE, videoStart, out);
+  muxWithSounds(webm, sounds, mp4);
+  fs.rmSync(webm, { force: true });
+  sounds.filter(p => p.kind === "clip").forEach(p => fs.rmSync(p.file, { force: true }));
+  console.log("video", mp4, "sounds", sounds.length);
 })().catch(e => { console.error(e); process.exit(1); });

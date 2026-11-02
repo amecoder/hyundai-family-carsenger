@@ -54,11 +54,13 @@ cd prototypes/pleos-scenario
 | 응원이 연달아 온 날 (차례로 재생) | 집 → 동네 마트 | 주행 중 응원 4개가 연달아 와도 겹치지 않고 도착 순서대로 하나씩 재생 |
 | EV 충전 완료 알림 | 아파트 지하 충전소 | 충전량 80% 도달 시 알림 |
 
-시나리오의 엄마·민지 응원은 `PLEOS_VOICE_DIR`(기본 `~/Android/voice`)의 목소리 파일(`cheer_*.wav`, 공개 TTS로 만듦)을 녹음으로 붙여 보냅니다. 파일이 없으면 문구를 Pleos TTS로 대신 읽습니다.
+시나리오의 엄마·민지 응원은 `PLEOS_VOICE_DIR`(기본 `~/Android/voice`)의 목소리 파일(`cheer_*.wav`, 클로바더빙 AI 보이스로 만듦 — 아래 「목소리 출처」)을 녹음으로 붙여 보냅니다. 파일이 없으면 문구를 Pleos TTS로 대신 읽습니다.
 
 ## 가족 앱으로 직접 시연하기
 
 시나리오 버튼 대신 사람이 직접 가족 역할을 할 수 있습니다. 실행기 오른쪽의 엄마 폰이 실제 가족 앱이고, `http://127.0.0.1:8090/family`를 새 창으로 열어도 됩니다(`?as=민지`를 붙이면 민지로 시작).
+
+> **먼저 기능 ③·④를 켜세요.** 둘 다 운전자가 켜야 작동하는 기능(opt-in)이라 새로 설치한 차량 앱은 꺼진 채 시작합니다. 실행기의 「운전자 설정 → 기능 ③·④ 켜기」를 누르거나, 차 화면 ⚙ 설정(기어 P)에서 켭니다. 한 번 켜면 앱을 다시 설치(`install -r`)해도 남습니다. 꺼져 있으면 아래 표의 응원 재생·안전 알림 대신 가족방에 「🔇 운전자가 응원 듣기를 꺼 둠」이 뜹니다.
 
 | 가족 앱 | 차에서 일어나는 일 |
 |---|---|
@@ -69,6 +71,7 @@ cd prototypes/pleos-scenario
 
 가운데 **수동 조작** 버튼으로 차를 움직입니다. 예를 들어 픽업 흐름은 이렇게 됩니다.
 
+0. 「운전자 설정 → 기능 ③·④ 켜기」(처음 한 번)
 1. 「처음 상태로」 → 가족 앱(민지)에서 「데리러 와」 → 「🎙 "응, 추가해 줘"」 → 내비에 학원 경로(약 12분)
 2. 「출발」(D·40km/h, 「정차」를 누를 때까지 계속 달림) → 「정차」 → 가족방에 "학원 앞에 도착했어요"
 3. 「왼쪽 뒷문 열기」 → 「뒷좌석 착석」 → 「왼쪽 뒷문 닫기」 → "뒷좌석 탑승 확인 (민지)"
@@ -77,23 +80,47 @@ cd prototypes/pleos-scenario
 주의할 점입니다.
 
 - 현대 패밀리 카신저는 **포그라운드 서비스**로 돌아서 내비가 앞에 있어도 명령을 받고 음성·알림을 냅니다(10-29부터. 그 전에는 안드로이드 14가 뒤로 간 앱을 얼렸습니다). 응원 카드 같은 화면을 보여 주려면 하단의 현대 패밀리 카신저 아이콘을 누르거나 `adb shell am start --user 10 -n dev.gajokseok.car/.MainActivity`를 실행합니다.
-- **운전자 음성**은 공개 TTS(Edge TTS)로 만든 녹음 `driver_yes.pcm`("응, 추가해 줘")·`driver_no.pcm`("아니, 지금은 안 돼")을 차가 받아 Pleos 음성 인식(ON_DEVICE)에 넣는 방식입니다. 에뮬레이터에는 PC 마이크가 연결돼 있지 않기 때문입니다. 파일은 `PLEOS_VOICE_DIR`(기본 `~/Android/voice`)에 두고 레포에는 넣지 않습니다. 파일이 없거나 6초 안에 인식 결과가 없으면 버튼이 뜻하는 응답을 대신 적용하고 화면에 그렇게 알립니다.
+- **운전자 설정(기능 ③·④ opt-in)**: 차 화면 오른쪽 위 **⚙ 설정**(기어 P에서만, P를 벗어나면 닫힘)에서 「가족 목소리 바로 듣기」(기능 ③)·「안전 운전 응원」(기능 ④)·「서비스 개선용 사용 기록」을 켜고 끈다. **셋 다 기본은 꺼짐**이고 값은 앱을 다시 시작해도 남는다. 응원 듣기가 꺼져 있으면 응원을 재생하지 않고 차가 `cheer_skipped`를 보고해, 가족방의 그 응원 말풍선이 「🔇 운전자가 응원 듣기를 꺼 둠」으로 바뀐다(대기 목록에서도 빠진다). 안전 운전 응원이 꺼져 있으면 급제동·과속은 차 화면에 세지만 가족방에 알리지 않는다. 실행기의 「운전자 설정」 버튼(`POST /api/driver/settings`)은 운전자가 ⚙ 설정을 누르는 대역이고 기능 ③·④만 바꾼다(사용 기록은 운전자 선택 그대로). 녹화 스크립트도 시작할 때 기능 ③·④를 켜고, 차가 받았다는 확인이 가족방 기록에 올라올 때까지 기다린다(10초 안에 안 오면 중단)
+- **운전자 음성**은 클로바더빙으로 만든 녹음 `driver_yes.pcm`("응, 추가해 줘")·`driver_no.pcm`("아니, 지금은 안 돼")을 차가 받아 Pleos 음성 인식(ON_DEVICE)에 넣는 방식입니다. 에뮬레이터에는 PC 마이크가 연결돼 있지 않기 때문입니다. 파일은 `PLEOS_VOICE_DIR`(기본 `~/Android/voice`)에 두고 레포에는 넣지 않습니다. 파일이 없거나 6초 안에 인식 결과가 없으면 버튼이 뜻하는 응답을 대신 적용하고 화면에 그렇게 알립니다.
 - 녹음은 브라우저 마이크 권한이 필요합니다. `127.0.0.1`은 브라우저가 안전한 주소로 취급해서 https 없이 녹음됩니다. 다른 기기(휴대폰)에서 접속하려면 https가 필요해서 이번 범위에서는 뺐습니다.
 - 녹음은 실행기 메모리에만 둡니다(파일당 2MB, 최근 20개). 실행기를 끄면 사라집니다.
 - 실행기는 `127.0.0.1`·`localhost`·`10.0.2.2`(에뮬레이터에서 본 PC) 주소로 온 요청만 받고, 다른 웹사이트가 보낸 요청(`Origin`이 다른 POST)은 거부합니다. 브라우저로 아무 사이트나 열어 둔 상태에서 그 사이트가 차를 조작하지 못하게 하려는 것입니다.
 - 주행 중에는 시나리오 실행처럼 다른 조작이 막힙니다(「정차」만 가능).
 
-자동 시연·녹화: `record_family_demo.cjs`가 위 흐름을 실제 에뮬레이터로 돌리고 실행기 화면을 녹화합니다. 엄마의 응원 녹음은 `cheer_mom.wav`(공개 TTS 목소리)를 크롬 가짜 마이크로 넣고, 에뮬레이터 소리(차 음성·응원 재생)는 PC 기본 출력의 모니터를 `parecord`로 녹음해 `family_demo.mp4`에 합칩니다(ffmpeg 필요). 2026-10-29 녹화본은 `docs/plans/submission/가족석_가족앱_시연_음성.mp4`(42초, 소리 포함)입니다.
+자동 시연·녹화: `record_family_demo.cjs`가 위 흐름을 실제 에뮬레이터로 돌리고 실행기 화면을 녹화합니다. 엄마의 응원 녹음은 `cheer_mom.wav`(클로바더빙 목소리)를 크롬 가짜 마이크로 넣고, 소리 트랙은 아래 「녹화 소리」 방식으로 다시 만들어 `family_demo.mp4`에 합칩니다(ffmpeg·uv 필요). 2026-10-29 녹화본은 `docs/plans/submission/가족석_가족앱_시연_음성.mp4`(42초, 소리 포함)입니다.
 
 ```bash
 PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> node record_family_demo.cjs ~/Android/demo_video/family
 ```
 
+## 재방문율(Retention) 측정
+
+실행기는 가족방에서 일어난 일을 **사용 기록**으로 남기고 가족 단위 주간 재방문율을 계산한다. 설계 근거는 `docs/plans/2026-11-01_현대패밀리카신저_재방문율_측정_기획.md`.
+
+- **동의 먼저**: 가족 앱 상단 「서비스 개선용 사용 기록에 동의」를 켜야 기록이 시작된다. 끄면 그 가족의 기록이 즉시 지워진다(그 삭제 동안은 SQLite 임시 파일(저널)을 디스크 대신 메모리에 둬, 지울 기록의 사본이 디스크에 써지지 않는다)
+- **운전자 동의는 따로**: 차의 이벤트(출발·도착·픽업 응답·응원 재생 등)는 차량 앱 ⚙ 설정의 「서비스 개선용 사용 기록」을 운전자가 켰을 때만 이벤트 이름을 붙여 보낸다. 꺼져 있으면 서버는 차 쪽 이벤트를 기록하지 않는다(가족방 메시지는 그대로 간다)
+- **무엇을 남기나**: 이벤트 이름·시각·차/가족 구분·출처만. 위치·장소 이름·메시지 내용·음성은 남기지 않고, 가족·사람 이름은 키를 섞은 해시(가명)로 저장한다. 해시 키는 기록과 다른 파일에 둔다
+- **저장 위치**: `data/analytics.sqlite`(기록), `data/analytics.salt`(가명처리 키, 권한 600). 둘 다 git 제외. 끄려면 `--no-analytics`. 키 파일이 없어졌거나 **다른 키로 바뀌었으면**(DB에 남긴 키 확인값과 다름) 시작을 거부한다 — 다른 키로는 철회 때 옛 기록을 찾지 못하기 때문
+- **대본 제외**: 시연 시나리오가 자동 재생 중이거나 끝난 지 30초 안(차가 늦게 보고하는 응원 재생 대비, 그 사이 수동 버튼을 눌러도 유지)에 **차가 보고한** 이벤트는 출처 `scripted`로 따로 세고 재방문율에 넣지 않는다. 가족 쪽 행동(글·응원·픽업 요청·빠른 답장)은 사람이 직접 누른 것이라 시연 중이든 리허설이든 항상 `live`(2026-11-02 사용자 결정 「리허설도 센다」). 수동 조작(`manual_*`)도 `live`. 실행기 화면 안의 엄마 폰(`/family?…&embed=1`)은 실행기 페이지와 함께 자동으로 열리므로 `family_room_opened`로 기록하지 않는다. 시연 시나리오가 도는 중에 리허설로 보낸 응원은 `cheer_sent`(활성 가족)로는 잡히지만, 차의 `cheer_played`는 대본 재생과 구분할 수 없어 scripted라 핵심 교환(North Star)에는 들어가지 않는다 — 리허설을 핵심 교환까지 세려면 수동 조작으로 운전한다. 녹화 스크립트 `record_family_demo.cjs`는 사람 대신 가족 앱 버튼을 누르므로 동의를 켠 채 돌리면 live로 쌓인다 → 녹화 전에 동의를 끄거나 `--no-analytics`로 띄운다
+- **핵심 교환(North Star)**: 응원이 차에서 재생됨(`cheer_played`) 또는 픽업 승인(`pickup_accepted`). 차의 보고는 가족이 실제로 보낸 것에 대한 응답일 때만 센다 — 재생 보고는 기다리던 응원과 짝지어질 때, 픽업 응답(승인·거절·무응답)은 열린 요청 하나당 한 번. 이게 있었던 주만 "다시 썼다"로 센다. 출발·도착·탑승 같은 자동 알림은 세지 않는다
+- **보는 곳**: http://127.0.0.1:8090/analytics (JSON은 `/api/analytics?weeks=4`)
+- 가족 구분은 데모라 하나(`CARSENGER_FAMILY_ID`, 기본 `demo-family`)지만 기록 표는 가족별로 나뉜다
+
+| 이벤트 | 쪽 | 언제 |
+|---|---|---|
+| `family_room_opened` | 가족 | 가족 앱을 열 때 |
+| `family_message_sent` · `pickup_requested` · `cheer_sent` · `quick_reply_sent` | 가족 | 글·픽업 요청·응원 녹음·빠른 답장을 보낼 때 |
+| `trip_departed` · `trip_arrived` · `rest_stopped` · `charge_completed` | 차 | 출발·도착·휴식·충전 완료 알림을 보낼 때 |
+| `pickup_accepted` · `pickup_declined` · `pickup_timed_out` · `pickup_arrived` · `boarding_confirmed` | 차 | 픽업 승인·거절·무응답(12초)·픽업 장소 도착·탑승 확인. 가드레일 「픽업 거절 비율」은 승인+거절만 분모로 쓰고 무응답은 따로 센다 |
+| `safety_alert_sent` · `cheer_played` | 차 | 안전 운전 알림·가족 응원 재생 |
+
+차량 앱의 이벤트 이름은 `core/Detector.kt`의 `UsageEvent`, 서버 목록은 `scenario/analytics.py`의 `EVENTS`에 있고, 둘이 다르면 테스트가 실패한다.
+
 ## 무엇이 실제이고 무엇이 대역인가
 
 | 실제 | 시나리오가 대신 함 | 대역 |
 |---|---|---|
-| Pleos 에뮬레이터 v2.1.0, 현대 패밀리 카신저 APK, Vehicle SDK 신호, AAOS 속도 신호(급제동·과속 판정), Pleos TTS, **Pleos 음성 인식(STT)**, **NaviHelper 내비 경로·경유지**, 주행 중 Pleos의 화면 가림, 가족 앱의 녹음과 차에서의 재생 | Virtual Console 조작, (시나리오 실행 시) 가족의 픽업 요청·응원 | 가족 서버(실행기가 Firebase 대신), 가족 앱은 PC 브라우저에서 실행(실제 휴대폰 아님), 운전자 목소리(공개 TTS 녹음을 마이크 대신 주입), 엄마·민지 목소리(공개 TTS로 만든 녹음), 가족방의 도착 예정 시간(시나리오 값. 실제 내비 소요 시간은 차 화면 메모로 표시) |
+| Pleos 에뮬레이터 v2.1.0, 현대 패밀리 카신저 APK, Vehicle SDK 신호, AAOS 속도 신호(급제동·과속 판정), Pleos TTS, **Pleos 음성 인식(STT)**, **NaviHelper 내비 경로·경유지**, 주행 중 Pleos의 화면 가림, 가족 앱의 녹음과 차에서의 재생 | Virtual Console 조작, (시나리오 실행 시) 가족의 픽업 요청·응원 | 가족 서버(실행기가 Firebase 대신), 가족 앱은 PC 브라우저에서 실행(실제 휴대폰 아님), 운전자 목소리(클로바더빙 녹음을 마이크 대신 주입), 엄마·민지 목소리(클로바더빙으로 만든 녹음), 가족방의 도착 예정 시간(시나리오 값. 실제 내비 소요 시간은 차 화면 메모로 표시) |
 
 ## 에뮬레이터에서 알게 된 제약
 
@@ -112,7 +139,11 @@ PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> node record_fam
 
 ## 시연 영상 녹화
 
-실행기가 떠 있는 상태에서 아래 명령을 실행하면, 시나리오마다 실행기 화면을 **소리(PC 기본 출력을 `parecord`로 녹음)와 단계 자막(「단계 · 상황 · 확인할 것」)을 넣어** `<출력 폴더>/<시나리오 id>.mp4`로 저장합니다(1600×900, ffmpeg 필요). 시나리오 id를 뒤에 붙이면 그것만 녹화합니다. 단계가 덜 실행됐거나 녹음이 무음(최대 음량 -50dB 미만)이면 종료 코드 1로 끝납니다.
+실행기가 떠 있는 상태에서 아래 명령을 실행하면, 시나리오마다 실행기 화면을 **소리와 단계 자막(「단계 · 상황 · 확인할 것」)을 넣어** `<출력 폴더>/<시나리오 id>.mp4`로 저장합니다(1600×900, ffmpeg·uv 필요). 시나리오 id를 뒤에 붙이면 그것만 녹화합니다. 단계가 덜 실행되면 종료 코드 1로 끝납니다. 차가 소리를 내지 않는 시나리오(예: `ev_charge`)는 무음 트랙으로 저장합니다. 녹화를 시작하기 직전에 「처음 상태로」(`POST /api/manual/reset`)를 실행해, 앞 시나리오의 가족방·차 화면이 영상 첫 장면에 남지 않게 합니다. 영상 시작 5초 동안 위쪽에 클로바더빙 출처 문구를 띄웁니다(페이지가 열리기 전 초기화 스크립트로 붙여, 페이지가 늦게 열려도 첫 장면부터 보입니다 — `tests/e2e/voice_credit_check.cjs`. 실제로는 첫 페이지 이동을 시작한 뒤 5초라 5초보다 조금 길게 보입니다).
+
+**녹화 소리**: 에뮬레이터 소리를 PC에서 녹음하지 않습니다(10-30 녹화본은 소리 1초당 8~12번 '딸깍' 잡음이 들어갔고, 합치는 단계에서는 0번이었습니다). 대신 실행기가 차가 소리를 낸 시각을 기록하고(`GET /api/sounds?since=<초>` — 차가 응원 녹음을 받아 간 시각, 차가 `speak`로 알린 안내 음성), `demo_audio.cjs`가 그 시각에 맞춰 원본 녹음 파일과 같은 안내 문장의 녹음을 깔아 48kHz로 합칩니다. 안내 문장 녹음은 `car_speech_lines.json`(문장 → 파일 이름)으로 `PLEOS_VOICE_DIR/car_speech_clova/`에서 찾고, 표에 없는 문장만 Edge TTS(`ko-KR-HyunsuMultilingualNeural`)로 합성해 `PLEOS_VOICE_DIR/car_speech/`에 캐시합니다. 그래서 영상 속 차 안내 음성은 Pleos TTS가 아니라 같은 문장을 다른 목소리로 읽은 소리입니다. 차 앱이 새 문장을 말하게 되면 `car_speech_lines.json`과 녹음을 함께 추가합니다.
+
+**목소리 출처**: 엄마·민지·아빠·차 안내 목소리는 네이버 클로바더빙(CLOVA Dubbing) 무료 플랜의 AI 보이스(엄마 지윤, 민지 다인, 아빠 기태, 차 안내 진호)로 만들었습니다. 무료 플랜은 공모전 출품을 허용하되 출처 표기가 필수라, 영상에 출처 문구를 넣고 영상 설명에도 「본 영상에는 클로바더빙(CLOVA Dubbing)의 AI 보이스가 사용되었습니다. #클로바더빙 #지윤 #다인 #기태 #진호 https://clovadubbing.naver.com」을 적습니다. 받은 파일은 말 빠르기를 1.2배로 하고 문장 안 쉼을 0.12초로 줄여 씁니다(대본과 처리 방법: `docs/plans/2026-10-31_현대패밀리카신저_목소리_대본.md`). 목소리 파일은 레포에 넣지 않습니다.
 
 ```bash
 PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> node record_demo.cjs ~/Android/demo_video [pickup luggage …]
@@ -126,16 +157,18 @@ PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> node record_dem
 | `scenario/scenarios.py` | 시나리오 정의 (차량 동작 + 가족·운전자 행동), 수동 조작(`MANUAL`) |
 | `scenario/runner.py` | 시나리오 실행·중지·상태 |
 | `scenario/family.py` | 가족 서버 대역 (차량 앱 명령함 + 가족방 피드 + 녹음 보관함) |
+| `scenario/analytics.py` | 사용 기록(SQLite·가명처리·동의)과 주간 코호트 재방문율 계산 |
 | `scenario/screen.py` | 에뮬레이터 화면 캡처 |
-| `scenario/server.py` | 웹 서버 (빠른 답장 `/api/family/quick`, `/api/scenarios`·`/api/status`·`/api/run/<id>`·`/api/stop`·`/api/car/event`·`/api/car/inbox`·`/api/family/feed`·`/api/screen`, 가족 앱 `/family`·`/api/family/say`·`/api/family/pickup`·`/api/family/cheer`·`/api/audio/<id>`, 수동 조작 `/api/manual/<동작>`, 운전자 음성 `/api/driver/voice`·`/api/voice/<clip>.pcm`) |
+| `scenario/server.py` | 웹 서버 (빠른 답장 `/api/family/quick`, `/api/scenarios`·`/api/status`·`/api/run/<id>`·`/api/stop`·`/api/car/event`·`/api/car/inbox`·`/api/family/feed`·`/api/screen`, 가족 앱 `/family`·`/api/family/say`·`/api/family/pickup`·`/api/family/cheer`·`/api/audio/<id>`, 수동 조작 `/api/manual/<동작>`, 운전자 음성 `/api/driver/voice`·`/api/voice/<clip>.pcm`, 운전자 설정 대역 `/api/driver/settings`) |
 | `static/index.html` | 실행기 화면 |
 | `static/family.html` | 가족 앱 화면 |
+| `static/analytics.html` | 재방문율 대시보드 (`/analytics`, `/api/analytics`·`/api/analytics/consent`) |
 | `../gajokseok-car/` | 현대 패밀리 카신저 차량 앱 (Kotlin). 판단 엔진 `core/Detector.kt`·`core/ReplyIntent.kt`, 음성 인식 `Ears.kt`, 내비 `NaviLink.kt`, 포그라운드 서비스 `GajokService.kt` |
 
 ## 테스트
 
 ```bash
-uv run --no-project --with pytest pytest -q                 # 실행기 (71개, 브라우저 E2E 1개는 아래 환경변수가 있을 때만)
-PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> uv run --no-project --with pytest pytest -q tests/test_family_e2e.py  # 가족 앱 E2E (크롬 가짜 마이크)
-cd ../gajokseok-car && gradle testDebugUnitTest              # 차량 앱 판단 엔진·음성 판정 (29개)
+uv run --no-project --with pytest pytest -q                 # 실행기 (130개, 브라우저 E2E 2개는 아래 환경변수가 있을 때만)
+PW_CORE=<playwright-core 폴더> CHROME=<chromium 실행 파일> uv run --no-project --with pytest pytest -q tests/test_family_e2e.py tests/test_analytics_e2e.py  # 가족 앱·사용 기록 동의·대시보드 E2E
+cd ../gajokseok-car && gradle testDebugUnitTest              # 차량 앱 판단 엔진·음성 판정 (45개)
 ```

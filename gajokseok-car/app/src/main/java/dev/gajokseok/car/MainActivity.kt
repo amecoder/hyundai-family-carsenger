@@ -20,11 +20,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.gajokseok.car.core.Command
 import dev.gajokseok.car.core.Detector
+import dev.gajokseok.car.core.DriverSettings
 import dev.gajokseok.car.core.Effect
 import dev.gajokseok.car.core.GearState
 import dev.gajokseok.car.core.PickupPhase
 import dev.gajokseok.car.core.Screen
 import dev.gajokseok.car.core.Signal
+import dev.gajokseok.car.core.UsageEvent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -40,6 +42,8 @@ class MainActivity : Activity() {
     private lateinit var cheers: CheerPlayer
     private lateinit var ears: Ears
     private lateinit var navi: NaviLink
+    private lateinit var settingsStore: DriverSettingsStore
+    private lateinit var settingsCard: DriverSettingsCard
     private val clock = SimpleDateFormat("HH:mm", Locale.KOREA)
 
     private lateinit var home: View
@@ -77,6 +81,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        settingsStore = DriverSettingsStore(this)
+        detector.updateSettings(settingsStore.load())
         setContentView(buildRoot())
         requestPermissions(
             arrayOf(
@@ -128,6 +134,8 @@ class MainActivity : Activity() {
 
     private fun handleSignal(s: Signal) {
         apply(detector.onSignal(s, SystemClock.elapsedRealtime()))
+        // the settings card is for a parked car only: any move out of P closes it
+        if (detector.snapshot().gear != GearState.PARK) settingsCard.view.gone(true)
         refreshStatus()
     }
 
@@ -140,7 +148,29 @@ class MainActivity : Activity() {
             else -> Unit
         }
         apply(detector.onCommand(c, SystemClock.elapsedRealtime()))
+        if (c is Command.ApplyDriverSettings) {
+            settingsStore.save(detector.settings)
+            if (settingsCard.view.visibility == View.VISIBLE) settingsCard.show(detector.settings)
+        }
         refreshStatus()
+    }
+
+    /** The driver flipped a switch on the settings card. */
+    private fun changeSettings(next: DriverSettings) {
+        detector.updateSettings(next)
+        settingsStore.save(next)
+        val text = "운전자 설정: ${next.summary()}"
+        showNote(text)
+        link.post("note", text)
+        refreshStatus()
+    }
+
+    private fun openSettings() {
+        if (detector.snapshot().gear != GearState.PARK) {
+            showNote("설정은 기어 P에서 바꿀 수 있어요")
+            return
+        }
+        settingsCard.show(detector.settings)
     }
 
     // ---- output ----
@@ -149,9 +179,10 @@ class MainActivity : Activity() {
         for (e in effects) {
             Log.i(TAG, "effect $e")
             when (e) {
-                is Effect.FamilyMessage -> { addBubble("차", e.text, fromCar = true); driveLast.text = "가족에게 보냄: ${e.text}"; link.post("message", e.text) }
+                is Effect.FamilyMessage -> { addBubble("차", e.text, fromCar = true); driveLast.text = "가족에게 보냄: ${e.text}"; link.post("message", e.text, detector.settings.usageEvent(e.event)) }
                 is Effect.Speak -> { voice.say(e.text); link.post("speak", e.text) }
                 is Effect.PlayCheer -> cheers.play(e)
+                is Effect.CheerSkipped -> { showNote("${e.from}의 응원이 왔지만 응원 듣기가 꺼져 있어요 · ⚙ 설정"); link.post("cheer_skipped", "${e.from}: ${e.text}") }
                 Effect.StopVoice -> { voice.stop(); cheers.stop(); hideCheer(); stopListening() }
                 Effect.StopListening -> stopListening()
                 Effect.ListenForReply -> { listenHint.text = "'응' 또는 '아니'라고 말해 주세요"; voice.afterSpeech { listenHint.text = "🎙 듣는 중 · '응' 또는 '아니'"; ears.listen() } }
@@ -159,7 +190,7 @@ class MainActivity : Activity() {
                 is Effect.ShowScreen -> show(e.screen)
                 is Effect.Note -> { showNote(e.text); link.post("note", e.text) }
                 is Effect.Banner -> { driveBanner.text = e.text ?: ""; driveBanner.gone(e.text == null) }
-                is Effect.SafetyAlert -> { addBubble("차", e.text, fromCar = true); link.post("safety", e.text) }
+                is Effect.SafetyAlert -> { addBubble("차", e.text, fromCar = true); link.post("safety", e.text, detector.settings.usageEvent(e.event)) }
             }
         }
         refreshStatus()
@@ -192,6 +223,7 @@ class MainActivity : Activity() {
         val parkedLike = screen == Screen.HOME || screen == Screen.CHEER
         home.gone(!parkedLike)
         driving.gone(parkedLike)
+        if (!parkedLike) settingsCard.view.gone(true) // never left open on the move
         pickupCard.gone(screen != Screen.PICKUP_PROMPT)
         if (screen == Screen.PICKUP_PROMPT) {
             val s = detector.snapshot()
@@ -209,7 +241,7 @@ class MainActivity : Activity() {
         else "녹음 없음 · 문구를 음성으로 읽어요"
         cheerCard.gone(false)
         startBars()
-        link.post("cheer_played", "${e.from}: ${e.text}")
+        link.post("cheer_played", "${e.from}: ${e.text}", detector.settings.usageEvent(UsageEvent.CHEER_PLAYED))
     }
 
     private fun clipLength(ms: Long): String {
@@ -244,8 +276,14 @@ class MainActivity : Activity() {
             PickupPhase.ARRIVED -> "${s.pickupPlace} 도착 · 탑승 대기"
             PickupPhase.BOARDED -> "뒷좌석 탑승 확인됨"
         }
-        cheerValue.text = if (s.cheersReceived == 0) "없음" else "${s.cheersReceived}개 · 받는 즉시 재생"
-        safetyValue.text = if (s.harshBrakes + s.speedings == 0) "이번 주행 급제동·과속 없음" else "이번 주행 급제동 ${s.harshBrakes}번 · 과속 ${s.speedings}번"
+        val settings = detector.settings
+        cheerValue.text = when {
+            !settings.cheerVoice -> "듣기 꺼 둠 · ⚙ 설정에서 켜기"
+            s.cheersReceived == 0 -> "없음"
+            else -> "${s.cheersReceived}개 · 받는 즉시 재생"
+        }
+        val risky = if (s.harshBrakes + s.speedings == 0) "이번 주행 급제동·과속 없음" else "이번 주행 급제동 ${s.harshBrakes}번 · 과속 ${s.speedings}번"
+        safetyValue.text = if (settings.safetyAlert) risky else "$risky · 가족 알림 꺼 둠"
     }
 
     private fun gearLabel(g: GearState) = when (g) {
@@ -280,6 +318,7 @@ class MainActivity : Activity() {
         driving = buildDriving()
         pickupCard = buildPickupCard()
         cheerCard = buildCheerCard()
+        settingsCard = DriverSettingsCard(this, onChange = ::changeSettings, onClose = { settingsCard.view.gone(true) })
         noteBar = label("", 18f, Palette.ink).apply {
             background = rounded(Palette.panel2, dp(14).toFloat(), Palette.line)
             setPadding(dp(22), dp(14), dp(22), dp(14))
@@ -289,10 +328,12 @@ class MainActivity : Activity() {
         root.addView(driving, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         root.addView(pickupCard, FrameLayout.LayoutParams(dp(980), WRAP_CONTENT, Gravity.CENTER))
         root.addView(cheerCard, FrameLayout.LayoutParams(dp(860), WRAP_CONTENT, Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dp(150) })
+        root.addView(settingsCard.view, FrameLayout.LayoutParams(dp(980), WRAP_CONTENT, Gravity.CENTER))
         root.addView(noteBar, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(36) })
         driving.gone(true)
         pickupCard.gone(true)
         cheerCard.gone(true)
+        settingsCard.view.gone(true)
         return root
     }
 
@@ -303,6 +344,8 @@ class MainActivity : Activity() {
         titles.addView(label("현대 패밀리 카신저 · 가족방", 16f, Palette.muted))
         titles.addView(label("우리 가족, 오늘도 함께", 34f, bold = true))
         header.addView(titles, lp(0, WRAP_CONTENT, 1f))
+        header.addView(button("⚙ 설정", Palette.panel2, Palette.ink) { openSettings() }.apply { textSize = 18f },
+            lp(WRAP_CONTENT, dp(60)).apply { rightMargin = dp(16) })
         statusPill = label("● 정차 중", 18f, Palette.green).apply {
             background = rounded(Palette.panel2, dp(24).toFloat())
             setPadding(dp(20), dp(10), dp(20), dp(10))

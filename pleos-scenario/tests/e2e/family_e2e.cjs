@@ -31,8 +31,14 @@ const { chromium } = require(process.env.PW_CORE);
   await page.fill("#caption", "조심히 와");
   await page.screenshot({ path: `${shots}/family_preview.png` });
   await page.click("#sendCheer");
-  await page.waitForSelector(".msg.me:has-text('응원 음성 (0:02)')");
+  await page.waitForSelector(".msg.me:has-text('응원 음성 (0:02)') .cs.waiting");
   await page.screenshot({ path: `${shots}/family_sent.png` });
+
+  // the car reports it started the cheer: the same bubble flips from waiting to played
+  await page.evaluate(b => fetch(`${b}/api/car/event`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "cheer_played", text: "민지: 조심히 와" }) }), base);
+  await page.waitForSelector(".msg.me:has-text('응원 음성 (0:02)') .cs.played");
+  await page.screenshot({ path: `${shots}/family_played.png` });
 
   console.log(JSON.stringify({ errors }));
   await browser.close();

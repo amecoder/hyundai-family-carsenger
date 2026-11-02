@@ -37,11 +37,12 @@ class FamilyLink(
         sender.shutdownNow()
     }
 
-    /** Fire-and-forget event to the family side (messages, notes, spoken lines). */
-    fun post(kind: String, text: String) {
+    /** Fire-and-forget event to the family side (messages, notes, spoken lines); [event] names it for usage measurement. */
+    fun post(kind: String, text: String, event: String? = null) {
         sender.execute {
             runCatching {
-                val body = JSONObject().put("kind", kind).put("text", text).toString().toByteArray()
+                val body = JSONObject().put("kind", kind).put("text", text).apply { if (event != null) put("event", event) }
+                    .toString().toByteArray()
                 val conn = (URL("$baseUrl/api/car/event").openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 2000
@@ -106,6 +107,10 @@ class FamilyLink(
         )
         "driver_voice" -> Command.DriverVoice("$baseUrl/api/voice/${o.getString("clip")}.pcm", o.optBoolean("fallback_accept", true))
         "driver_reply" -> Command.DriverReply(o.getBoolean("accept"))
+        "driver_settings" -> Command.ApplyDriverSettings(
+            o.getBoolean("cheer_voice"), o.getBoolean("safety_alert"),
+            usageRecording = if (o.has("usage_recording")) o.getBoolean("usage_recording") else null,
+        )
         "cheer" -> Command.Cheer(
             o.getString("from"), o.getString("text"),
             audioUrl = o.optString("audio_id").takeIf { !o.isNull("audio_id") && it.isNotEmpty() }?.let { "$baseUrl/api/audio/$it" },

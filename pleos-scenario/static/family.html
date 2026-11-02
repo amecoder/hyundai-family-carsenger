@@ -34,6 +34,10 @@ body { margin: 0; background: #e6eaf1; color: var(--ink); font: 15px/1.5 "IBM Pl
 .msg.me { align-self: flex-end; flex-direction: row-reverse; } .msg.me .b { background: var(--teal-soft); border: 0; } .msg.me small { text-align: right; }
 .msg.safety .av { background: #c2410c; } .msg.safety .b { background: #fff1ec; border: 1px solid #f4b8a3; }
 .quick { display: inline-block; margin-top: 6px; border: 0; border-radius: 999px; padding: 6px 12px; font-size: .8rem; font-weight: 600; background: var(--teal); color: #fff; cursor: pointer; }
+.cs { display: inline-block; margin-top: 3px; font-size: .7rem; font-weight: 600; border-radius: 999px; padding: 1px 8px; }
+.cs.waiting { color: #92400e; background: #fef3c7; } .cs.played { color: #166534; background: #dcfce7; }
+.cs.skipped { color: #475569; background: #e2e8f0; }
+.msg.me .cs { float: right; }
 .sys { align-self: center; font-size: .74rem; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 12px 0; }
 .actions button, .sheet button, .bar button { font: inherit; font-weight: 700; cursor: pointer; border-radius: 12px; border: 0; padding: 10px 12px; }
@@ -62,6 +66,9 @@ audio { width: 100%; }
 .bar input { flex: 1; min-width: 0; }
 .bar button { background: var(--teal); color: #fff; }
 .hint { font-size: .7rem; color: var(--muted); padding: 0 14px 10px; }
+.consent { background: var(--surface); border-bottom: 1px solid var(--line); padding: 6px 14px; font-size: .76rem; }
+.consent label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.consent small { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -70,6 +77,9 @@ audio { width: 100%; }
     <span class="ico">가</span>
     <div class="t"><b>우리 가족방</b><small id="link">연결 확인 중…</small></div>
     <div class="who" role="group" aria-label="보내는 사람" id="who"></div>
+  </div>
+  <div class="consent" id="consentBar" hidden>
+    <label><input type="checkbox" id="consentBox"><span>서비스 개선용 사용 기록에 동의<br><small>기능 이름과 시각만 가명으로 저장 · 위치·메시지·음성은 저장 안 함 · 끄면 즉시 삭제</small></span></label>
   </div>
 
   <div class="chat" id="chat" aria-live="polite"><div class="empty">아직 대화가 없어요.<br>아래에서 픽업을 요청하거나 응원 음성을 보내 보세요.</div></div>
@@ -132,6 +142,7 @@ audio { width: 100%; }
   let items = [];
   function bubble(it) {
     if (it.kind === "cheer_played") return `<div class="sys">🔊 차에서 재생됨 · ${esc(it.text)} · ${esc(it.at)}</div>`;
+    if (it.kind === "cheer_skipped") return `<div class="sys">🔇 운전자가 차에서 응원 듣기를 꺼 두어 재생하지 않았어요 · ${esc(it.text)} · ${esc(it.at)}</div>`;
     if (it.kind === "safety") {
       const [clip, words] = QUICK[me];
       return `<div class="msg car safety"><span class="av">차</span>
@@ -143,12 +154,17 @@ audio { width: 100%; }
     const mine = !car && it.sender === me;
     const color = car ? "" : `style="background:${AVATAR[it.sender] || "#79619e"}"`;
     const who = car ? "현대 패밀리 카신저 차량 알림" : it.sender;
+    // a cheer waits in the car's queue until the car reports it started playing, or skipped it (same cheer_id)
+    const settled = kind => it.cheer_id != null && items.some(x => x.kind === kind && x.cheer_id === it.cheer_id);
+    const cheerState = it.cheer_id == null ? "" : settled("cheer_played") ? '<span class="cs played">🔊 차에서 재생됨</span>'
+      : settled("cheer_skipped") ? '<span class="cs skipped">🔇 운전자가 응원 듣기를 꺼 둠</span>'
+      : '<span class="cs waiting">⏳ 차에서 재생 대기 중</span>';
     return `<div class="msg ${car ? "car" : "fam"} ${mine ? "me" : ""}"><span class="av" ${color}>${esc(car ? "차" : it.sender.slice(0, 1))}</span>
-      <div><div class="b">${esc(it.text)}</div><small>${esc(who)} · ${esc(it.at)}</small></div></div>`;
+      <div><div class="b">${esc(it.text)}</div>${cheerState}<small>${esc(who)} · ${esc(it.at)}</small></div></div>`;
   }
   function redraw() {
     // only what a family member would see: family posts, car notifications and played cheers (not the car's internal notes)
-    const shown = items.filter(it => ["family", "message", "cheer_played", "safety"].includes(it.kind));
+    const shown = items.filter(it => ["family", "message", "cheer_played", "cheer_skipped", "safety"].includes(it.kind));
     const chat = $("chat");
     if (!shown.length) {
       chat.innerHTML = '<div class="empty">아직 대화가 없어요.<br>아래에서 픽업을 요청하거나 응원 음성을 보내 보세요.</div>';
@@ -258,6 +274,20 @@ audio { width: 100%; }
       pollFeed();
     } catch (e) { $("recErr").textContent = e.message; }
     finally { $("sendCheer").disabled = false; }
+  });
+
+  // usage recording for retention: off until the family ticks the box; unticking deletes what was kept
+  fetch("api/analytics").then(r => r.json()).then(d => {
+    if (!d.enabled) return;
+    $("consentBox").checked = d.consent;
+    $("consentBar").hidden = false;
+  }).catch(() => { /* recording is optional: the family room works without it */ });
+  $("consentBox").addEventListener("change", async ev => {
+    const box = ev.target;
+    box.disabled = true;
+    try { await postJson("api/analytics/consent", { granted: box.checked }); }
+    catch (e) { box.checked = !box.checked; alert(e.message); }
+    finally { box.disabled = false; }
   });
 
   renderWho();

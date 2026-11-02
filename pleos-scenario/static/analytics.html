@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>카신저 재방문율</title>
+<style>
+:root { --bg: #f5f7fb; --surface: #fff; --ink: #172033; --muted: #6b7487; --line: #e3e7ef; --teal: #0e7a76; --teal-soft: #d6eeeb; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "IBM Plex Sans KR", "Noto Sans KR", system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 14px; }
+h1 { font-size: 1.25rem; margin: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.card h2 { font-size: .95rem; margin: 0 0 8px; }
+.note { color: var(--muted); font-size: .8rem; margin: 6px 0 0; }
+.kpis { display: flex; gap: 10px; flex-wrap: wrap; }
+.kpi { flex: 1; min-width: 150px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.kpi b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.kpi span { color: var(--muted); font-size: .8rem; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 600; }
+td.na { color: #b0b7c3; }
+.empty { color: var(--muted); font-size: .85rem; }
+code { background: var(--bg); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>현대 패밀리 카신저 · 재방문율(Retention)</h1>
+  <div class="kpis" id="kpis"></div>
+  <section class="card">
+    <h2>주간 코호트 재방문율 (가족 단위, 그 주 또는 이후에 다시 사용)</h2>
+    <div id="cohorts" class="empty">불러오는 중…</div>
+    <p class="note">코호트 = 핵심 이벤트(<span id="core"></span>)가 처음 일어난 주가 같은 가족 묶음. 아직 끝나지 않은 주는 「—」로 비워 두고, 이번 주에 시작한 코호트는 「진행 중」(가족 수가 아직 늘 수 있음)으로 표시합니다.
+      괄호 안은 그 주에 정확히 다시 쓴 비율입니다.</p>
+  </section>
+  <section class="card">
+    <h2>주별 활성 가족</h2>
+    <div id="weekly" class="empty">불러오는 중…</div>
+    <p class="note">핵심 교환 가족(North Star) = 그 주에 응원이 차에서 재생됐거나 픽업 요청이 승인된 가족. 양쪽 사용 = 같은 주에 차 쪽 이벤트와 가족 쪽 이벤트가 모두 있었던 가족.</p>
+  </section>
+  <section class="card">
+    <h2>무엇을 기록하나요</h2>
+    <p class="note" style="margin:0">이벤트 이름과 시각만 기록합니다. 위치·장소 이름·메시지 내용·음성은 기록하지 않고, 가족과 사람은 알아볼 수 없는 코드(가명)로 저장합니다.
+      가족 웹에서 동의해야 기록이 시작되고, 동의를 끄면 그 가족의 기록은 즉시 지워집니다. 시연 시나리오가 자동 재생한 이벤트는 따로 세고 재방문율에는 넣지 않습니다.</p>
+  </section>
+</main>
+<script>
+const pct = (v) => v === null ? "—" : `${Math.round(v * 100)}%`;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+function kpi(value, label) {
+  return `<div class="kpi"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
+}
+
+function render(data) {
+  const kpis = document.getElementById("kpis");
+  if (!data.enabled) {
+    kpis.innerHTML = kpi("꺼짐", "사용 기록 (--no-analytics)");
+    document.getElementById("cohorts").textContent = "사용 기록이 꺼져 있습니다.";
+    document.getElementById("weekly").textContent = "";
+    return;
+  }
+  const r = data.retention;
+  const families = r.cohorts.reduce((n, c) => n + c.size, 0);
+  kpis.innerHTML = kpi(data.consent ? "동의함" : "동의 전", "이 가족의 기록 동의")
+    + kpi(families, "코호트에 들어간 가족 수")
+    + kpi(data.events - r.scripted_events, "실제 사용 이벤트")
+    + kpi(r.scripted_events, "시연 대본 이벤트 (제외)")
+    + kpi(r.guardrails.pickup_answers ? pct(r.guardrails.pickup_declined_ratio) : "—",
+          `픽업 거절 비율 (가드레일, 응답 ${r.guardrails.pickup_answers}건 · 무응답 ${r.guardrails.pickup_timeouts}건 별도)`);
+  document.getElementById("core").textContent = r.core_events.join(", ");
+
+  const cohorts = document.getElementById("cohorts");
+  if (!r.cohorts.length) {
+    cohorts.textContent = "아직 핵심 이벤트가 없습니다.";
+  } else {
+    const n = r.cohorts[0].on_or_after.length;
+    const head = Array.from({ length: n }, (_, k) => `<th>${k}주차</th>`).join("");
+    const rows = r.cohorts.map((c) => {
+      const cells = c.on_or_after.map((v, k) => v === null
+        ? `<td class="na">—</td>`
+        : `<td>${pct(v)} <small>(${pct(c.on[k])})</small></td>`).join("");
+      const label = c.in_progress ? " (진행 중)" : "";
+      return `<tr><td>${esc(c.week_start)} 주${label}</td><td>${c.size}</td>${cells}</tr>`;
+    }).join("");
+    cohorts.innerHTML = `<table><thead><tr><th>시작 주</th><th>가족</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  const weekly = document.getElementById("weekly");
+  weekly.innerHTML = r.weekly.length
+    ? `<table><thead><tr><th>주</th><th>핵심 교환 가족</th><th>활성 가족</th><th>양쪽 사용</th></tr></thead><tbody>${
+        r.weekly.map((w) => `<tr><td>${esc(w.week_start)} 주</td><td>${w.core_families}</td><td>${w.active_families}</td><td>${w.two_sided_families}</td></tr>`).join("")
+      }</tbody></table>`
+    : "아직 끝난 주가 없습니다.";
+}
+
+fetch("/api/analytics?weeks=4")
+  .then((res) => res.json())
+  .then(render)
+  .catch((e) => { document.getElementById("cohorts").textContent = `불러오지 못했습니다: ${e.message}`; });
+</script>
+</body>
+</html>

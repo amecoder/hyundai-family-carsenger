@@ -3,7 +3,9 @@ from __future__ import annotations
 import threading
 
 from scenario.runner import ScenarioRunner
-from scenario.scenarios import PICKUP, SCENARIOS, CarCommand, Cruise, Drive, FamilySays, Gear, Scenario, Step, Stop, Wait
+from scenario.scenarios import (
+    PICKUP, SCENARIOS, CarCommand, Cruise, Drive, FamilySays, Gear, Scenario, Step, Stop, Wait, cheer,
+)
 
 
 class RecordingClient:
@@ -196,7 +198,8 @@ def test_pickup_scenario_drives_the_whole_family_flow() -> None:
     assert car[:2] == ["reset", "set_trip"]
     assert car.index("pickup_request") < car.index("driver_voice") < car.index("cheer")
     family = [c[1] for c in client.calls if c[0] == "family"]
-    assert "민지" in family and "엄마" in family
+    cheers = [_payload(c)["from"] for c in client.calls if c[:2] == ("car", "cheer")]
+    assert "민지" in family and "엄마" in cheers
 
 
 def test_every_scenario_starts_by_resetting_the_car_app() -> None:
@@ -318,3 +321,20 @@ def test_safety_scenario_speeds_for_ten_seconds_then_mom_answers_the_alert() -> 
     reply = next(i for i, c in enumerate(calls) if c[:2] == ("car", "cheer"))
     assert hard_brake < reply < _index(calls, ("gear", "P"))
     assert _payload(calls[reply])["clip"] == "cheer_mom_slow"
+
+
+def test_cheer_posts_chat_bubble_and_car_command_as_one_call() -> None:
+    # one call, so the family app never sees the bubble before it is linked to the cheer the car will play
+    client = RecordingClient()
+    run_sync(Scenario("c", "c", "c", (Step("응원", "", "", (cheer("엄마", "우유도 잊지 마", "cheer_mom_milk"),)),)), client)
+    assert client.calls == [("car", "cheer", (("clip", "cheer_mom_milk"), ("feed_text", "🎙 응원 음성 \"우유도 잊지 마\""),
+                                             ("from", "엄마"), ("text", "우유도 잊지 마")))]
+
+
+def test_voice_note_names_clova_dubbing_not_public_tts() -> None:
+    # the demo voices are CLOVA Dubbing recordings since 10-31; the subtitle is burned into the submitted videos
+    from scenario.scenarios import SCENARIOS
+
+    texts = [s.narration for sc in SCENARIOS for s in sc.steps]
+    assert not [t for t in texts if "공개 TTS" in t]
+    assert any("클로바더빙 녹음" in t for t in texts)

@@ -42,14 +42,17 @@ class ScenarioRunner:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._status: dict[str, Any] = {"state": "idle", "scenario": None, "step_index": -1, "log": [], "error": None}
+        # scripted_ended_at outlives later runs, so a manual button pressed right after a demo keeps its grace window
+        self._status: dict[str, Any] = {"state": "idle", "scenario": None, "step_index": -1, "log": [], "error": None,
+                                        "scripted_ended_at": None}
 
     def start(self, scenario: Scenario) -> bool:
         with self._lock:
             if self._thread and self._thread.is_alive():
                 return False
             self._stop.clear()
-            self._status = {"state": "running", "scenario": scenario.id, "step_index": -1, "log": [], "error": None}
+            self._status = {"state": "running", "scenario": scenario.id, "step_index": -1, "log": [], "error": None,
+                            "scripted_ended_at": self._status["scripted_ended_at"]}
             self._thread = threading.Thread(target=self._run, args=(scenario,), daemon=True)
             self._thread.start()
             return True
@@ -95,14 +98,20 @@ class ScenarioRunner:
                     action.run(self._vehicle, self._sleep, self._stop.is_set)
             if self._stop.is_set():
                 self._park_safely()
-                self._update(state="stopped")
+                self._finish(scenario, state="stopped")
             else:
-                self._update(state="done")
+                self._finish(scenario, state="done")
         except Exception as e:  # report any vehicle/HTTP failure to the UI instead of dying silently
             log.exception("scenario %s failed", scenario.id)
-            self._update(state="failed", error=str(e))
+            self._finish(scenario, state="failed", error=str(e))
         finally:
             done.set()
+
+    def _finish(self, scenario: Scenario, **changes: Any) -> None:
+        """The end state and the end time change together, so a car report never sees one without the other."""
+        if not scenario.id.startswith("manual_"):
+            changes["scripted_ended_at"] = time.time()  # epoch seconds; late car reports are judged against it
+        self._update(**changes)
 
     def _park_safely(self) -> None:
         step = PARK_BRAKE_KPH_PER_S * TICK_S

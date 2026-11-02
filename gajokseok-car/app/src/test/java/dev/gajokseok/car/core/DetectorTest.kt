@@ -17,6 +17,8 @@ class DetectorTest {
     @Before
     fun setUp() {
         d = Detector()
+        // these tests cover the features themselves, so the driver has opted in (DriverSettingsTest covers the off state)
+        d.updateSettings(DriverSettings(cheerVoice = true, safetyAlert = true, usageRecording = true))
         now = 0L
         cmd(Command.SetTrip(origin = "회사", destination = "집", etaMin = 40, driver = "아빠", child = "민지"))
         sig(Signal.Gear(GearState.PARK))
@@ -379,5 +381,51 @@ class DetectorTest {
         assertEquals(0, s.cheersReceived)
         assertEquals(0, s.harshBrakes)
         assertTrue(messages(drive()).isEmpty())
+    }
+
+    private fun events(effects: List<Effect>) = effects.mapNotNull {
+        when (it) {
+            is Effect.FamilyMessage -> it.event
+            is Effect.SafetyAlert -> it.event
+            else -> null
+        }
+    }
+
+    @Test
+    fun everyFamilyMessageNamesItsUsageEvent() {
+        val departed = drive()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        val accepted = cmd(Command.DriverReply(accept = true))
+        val atPickup = park()
+        val boarded = board()
+        val leaving = drive()
+        val home = park()
+        assertEquals(
+            listOf(UsageEvent.TRIP_DEPARTED, UsageEvent.PICKUP_ACCEPTED, UsageEvent.PICKUP_ARRIVED,
+                UsageEvent.BOARDING_CONFIRMED, UsageEvent.TRIP_DEPARTED, UsageEvent.TRIP_ARRIVED),
+            events(departed + accepted + atPickup + boarded + leaving + home),
+        )
+    }
+
+    @Test
+    fun declineRestChargeAndSafetyNameTheirEvents() {
+        cmd(Command.SetRestThreshold(seconds = 20))
+        drive()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        assertEquals(listOf(UsageEvent.PICKUP_DECLINED), events(cmd(Command.DriverReply(accept = false))))
+        now = 30_000
+        assertEquals(listOf(UsageEvent.REST_STOPPED), events(park()))
+        sig(Signal.Battery(70f))
+        assertEquals(listOf(UsageEvent.CHARGE_COMPLETED), events(sig(Signal.Battery(80f))))
+        drive()
+        harshBrake(40_000)
+        assertEquals(listOf(UsageEvent.SAFETY_ALERT_SENT), events(harshBrake(50_000)))
+    }
+
+    @Test
+    fun anUnansweredPickupIsNotADecline() {
+        drive()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        assertEquals(listOf(UsageEvent.PICKUP_TIMED_OUT), events(d.onTick(60_000)))
     }
 }

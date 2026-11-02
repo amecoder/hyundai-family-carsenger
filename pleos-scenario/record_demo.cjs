@@ -1,11 +1,12 @@
 // Usage: PW_CORE=<playwright-core dir> CHROME=<chromium binary> [ADB=<adb>] node record_demo.cjs <out dir> [scenario ids…]
 // Record the scenario runner page, one mp4 per scenario, with the emulator's sound and on-screen step captions.
-// Captions are drawn as an overlay inside the page (so they are part of the recording); sound is the PC's default
-// audio output monitor recorded with parecord and muxed with ffmpeg. Needs ./start_demo.sh running.
+// Captions are drawn as an overlay inside the page (so they are part of the recording); the sound track is rebuilt from
+// the runner's sound log (demo_audio.cjs) and muxed with ffmpeg. Needs ./start_demo.sh running, uv and ffmpeg.
 const { chromium } = require(process.env.PW_CORE);
-const { execFileSync, spawn, spawnSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { collectSounds, muxWithSounds, addVoiceCredit, driverOptsInForDemo } = require("./demo_audio.cjs");
 
 const BASE = "http://127.0.0.1:8090";
 const OUT = process.argv[2];
@@ -18,6 +19,24 @@ async function status() {
   return (await fetch(BASE + "/api/status")).json();
 }
 
+// clear the previous scenario's family chat and car cards before the video starts, so the title caption is not shown
+// over the last scenario's screen (the scenario's own first step resets again with its own trip)
+async function resetBeforeRecording() {
+  // the POST returns before the runner picks the job up, so a reset left "done" from before is not this one finishing
+  const stale = (await status()).runner.scenario === "manual_reset";
+  const r = await fetch(BASE + "/api/manual/reset", { method: "POST" });
+  if (!r.ok) throw new Error(`녹화 전 초기화를 시작하지 못했습니다 (HTTP ${r.status})`);
+  const until = Date.now() + 20000;
+  let seenRunning = false;
+  while (Date.now() < until) {
+    const { runner } = await status();
+    if (runner.scenario === "manual_reset" && runner.state === "running") seenRunning = true;
+    if (runner.scenario === "manual_reset" && runner.state === "done" && (seenRunning || !stale)) return;
+    await sleep(200);
+  }
+  throw new Error("녹화 전 초기화가 20초 안에 끝나지 않았습니다");
+}
+
 // the car app runs as a foreground service, but its screen (cards, cheer player) is only visible in front
 function carAppToFront() {
   try {
@@ -25,28 +44,6 @@ function carAppToFront() {
   } catch (e) {
     console.error("car app to front failed:", e.message);
   }
-}
-
-const SILENT_MAX_DB = -50; // a capture whose loudest moment is below this heard nothing from the emulator
-
-// resolves to a stop() that ends parecord and waits until the WAV header is finalised
-function startAudioCapture(file) {
-  const sink = execFileSync("pactl", ["get-default-sink"], { encoding: "utf8" }).trim();
-  const proc = spawn("parecord", ["-d", `${sink}.monitor`, "--file-format=wav", file], { stdio: "ignore" });
-  const closed = new Promise((resolve, reject) => {
-    proc.once("error", reject);
-    proc.once("close", resolve);
-  });
-  return async () => {
-    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGINT");
-    await closed;
-  };
-}
-
-function maxVolumeDb(file) {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-i", file, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
-  const m = /max_volume: (-?[\d.]+) dB/.exec(r.stderr || "");
-  return m ? Number(m[1]) : -Infinity;
 }
 
 // draws the caption box at the bottom of the runner page
@@ -92,15 +89,13 @@ async function waitForStart(id) {
 }
 
 async function recordOne(browser, s) {
+  await resetBeforeRecording();
   const ctx = await browser.newContext({ viewport: SIZE, recordVideo: { dir: OUT, size: SIZE } });
-  const audioFile = path.join(OUT, `${s.id}.wav`);
-  let stopAudio = null;
   let webm = null;
   try {
+    await addVoiceCredit(ctx);
+    const videoStart = Date.now(); // the page's video starts when the page is created
     const page = await ctx.newPage();
-    const videoStart = Date.now();
-    stopAudio = startAudioCapture(audioFile);
-    const audioStart = Date.now();
 
     await page.goto(BASE + "/");
     await page.waitForSelector(`button.run[data-id="${s.id}"]`);
@@ -133,23 +128,17 @@ async function recordOne(browser, s) {
     const video = page.video();
     const wallSeconds = (Date.now() - videoStart) / 1000;
     await ctx.close();
-    await stopAudio();
     webm = await video.path();
     if (!complete) throw new Error(`${s.id}: 상태 ${st.runner.state}, 단계 ${shown + 1}/${s.steps.length} — 녹화본을 쓰지 않습니다 (${webm})`);
-    const loudest = maxVolumeDb(audioFile);
-    if (loudest < SILENT_MAX_DB) throw new Error(`${s.id}: 녹음이 무음입니다 (최대 ${loudest} dB). 에뮬레이터 소리가 기본 출력으로 나오는지 확인하세요`);
 
     const mp4 = path.join(OUT, `${s.id}.mp4`);
-    const offset = ((audioStart - videoStart) / 1000).toFixed(2);
-    execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", webm, "-itsoffset", offset, "-i", audioFile,
-      "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "28",
-      "-af", "loudnorm=I=-18:TP=-2", "-c:a", "aac", "-b:a", "128k", "-shortest", mp4]);
+    const sounds = await collectSounds(BASE, videoStart, OUT);
+    muxWithSounds(webm, sounds, mp4);
     fs.rmSync(webm, { force: true });
-    fs.rmSync(audioFile, { force: true });
-    return { wallSeconds, steps: shown + 1, loudest, mp4 };
+    sounds.filter(p => p.kind === "clip").forEach(p => fs.rmSync(p.file, { force: true }));
+    return { wallSeconds, steps: shown + 1, sounds: sounds.length, mp4 };
   } finally {
     await ctx.close().catch(() => {});
-    if (stopAudio) await stopAudio().catch(() => {});
   }
 }
 
@@ -157,11 +146,13 @@ async function recordOne(browser, s) {
   fs.mkdirSync(OUT, { recursive: true });
   const scenarios = await (await fetch(BASE + "/api/scenarios")).json();
   const list = (Array.isArray(scenarios) ? scenarios : scenarios.scenarios).filter(s => !ONLY.length || ONLY.includes(s.id));
+  carAppToFront(); // a car app frozen in the background would miss the settings command
+  await driverOptsInForDemo(BASE);
   const browser = await chromium.launch({ executablePath: process.env.CHROME });
   try {
     for (const s of list) {
       const r = await recordOne(browser, s);
-      console.log(`${s.id}\tdone\tsteps ${r.steps}/${s.steps.length}\twall ${r.wallSeconds.toFixed(1)}s\tmax ${r.loudest} dB\t${r.mp4}`);
+      console.log(`${s.id}\tdone\tsteps ${r.steps}/${s.steps.length}\twall ${r.wallSeconds.toFixed(1)}s\tsounds ${r.sounds}\t${r.mp4}`);
     }
   } finally {
     await browser.close();

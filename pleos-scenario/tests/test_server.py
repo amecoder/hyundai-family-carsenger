@@ -376,6 +376,23 @@ def test_driver_voice_command_reaches_the_car(base: str) -> None:
     assert post(base + "/api/driver/voice", {"clip": "../x"})[0] == 400
 
 
+
+def test_driver_settings_stand_in_reaches_the_car(base: str) -> None:
+    """The runner stands in for the driver's taps on the car's settings card, like the driver voice buttons."""
+    body = {"cheer_voice": True, "safety_alert": False, "usage_recording": True}
+    assert post(base + "/api/driver/settings", body) == (200, {"ok": True})
+    _, inbox = get(base + "/api/car/inbox?after=0")
+    cmd = inbox["commands"][-1]
+    assert cmd == {"seq": cmd["seq"], "type": "driver_settings", **body}
+    # every switch must be a real boolean, so a typo cannot silently turn a feature off
+    assert post(base + "/api/driver/settings", {**body, "safety_alert": "yes"})[0] == 400
+    assert post(base + "/api/driver/settings", {"cheer_voice": True})[0] == 400
+    assert post(base + "/api/driver/settings", {**body, "usage_recording": "on"})[0] == 400
+    # the runner's buttons leave the usage log to the driver: without the key the car keeps its own choice
+    assert post(base + "/api/driver/settings", {"cheer_voice": False, "safety_alert": False})[0] == 200
+    cmd = get(base + "/api/car/inbox?after=0")[1]["commands"][-1]
+    assert "usage_recording" not in cmd
+
 def _wav(path: Path, seconds: float = 0.5) -> None:
     import wave
 
@@ -392,7 +409,8 @@ def test_scenario_cheer_carries_the_family_recording(tmp_path: Path) -> None:
 
     _wav(tmp_path / "cheer_mom.wav", seconds=1.5)
     hub = FamilyHub()
-    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command("cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom"})
+    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command(
+        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "🎙 응원 음성"})
     cmd = hub.commands_after(0)["commands"][-1]
     assert (cmd["type"], cmd["from"], cmd["text"], cmd["duration_ms"]) == ("cheer", "엄마", "조심히 와", 1500)
     assert "clip" not in cmd
@@ -405,7 +423,8 @@ def test_scenario_cheer_without_its_recording_falls_back_to_text(tmp_path: Path)
     from scenario.server import DemoWorld
 
     hub = FamilyHub()
-    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command("cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom"})
+    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command(
+        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "🎙 응원 음성"})
     cmd = hub.commands_after(0)["commands"][-1]
     assert cmd["type"] == "cheer" and "audio_id" not in cmd and "clip" not in cmd
 
@@ -440,6 +459,37 @@ def test_broken_voice_file_falls_back_to_text(tmp_path: Path) -> None:
 
     (tmp_path / "cheer_mom.wav").write_bytes(b"not a wav file")
     hub = FamilyHub()
-    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command("cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom"})
+    DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command(
+        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "🎙 응원 음성"})
     cmd = hub.commands_after(0)["commands"][-1]
     assert cmd["type"] == "cheer" and "audio_id" not in cmd
+
+
+def test_sound_log_lists_car_speech_and_played_clips(base: str) -> None:
+    from urllib.parse import quote
+
+    post(base + "/api/car/event", {"kind": "speak", "text": "경유지로 추가할까요?"})
+    _, data = post_raw(f"{base}/api/family/cheer?sender={quote('엄마')}&text={quote('조심히 와')}", b"RIFFvoice", "audio/wav")
+    urllib.request.urlopen(f"{base}/api/audio/{data['audio_id']}", timeout=5).read()
+    _, out = get(base + "/api/sounds?since=0")
+    assert [(s["kind"], s.get("text") or s.get("audio_id")) for s in out["sounds"]] == [
+        ("speech", "경유지로 추가할까요?"), ("clip", data["audio_id"])]
+    _, later = get(f"{base}/api/sounds?since={out['sounds'][-1]['ts'] + 1}")
+    assert later["sounds"] == []
+
+
+def test_sound_log_rejects_a_non_numeric_since(base: str) -> None:
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(base + "/api/sounds?since=abc")
+    assert e.value.code == 400
+
+
+def test_recorded_cheer_bubble_waits_until_the_car_plays_it(base: str) -> None:
+    from urllib.parse import quote
+
+    post_raw(f"{base}/api/family/cheer?sender={quote('민지')}&text={quote('아빠 최고!')}", b"RIFFvoice", "audio/wav")
+    post(base + "/api/car/event", {"kind": "cheer_played", "text": "민지: 아빠 최고!"})
+    _, feed = get(base + "/api/family/feed?after=0")
+    bubble, played = feed["items"][-2:]
+    assert bubble["kind"] == "family" and played["kind"] == "cheer_played"
+    assert bubble["cheer_id"] == played["cheer_id"]

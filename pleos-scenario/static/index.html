@@ -122,12 +122,17 @@ a { color: var(--teal); }
         <button type="button" data-clip="driver_yes">🎙 "응, 추가해 줘"</button>
         <button type="button" data-clip="driver_no">🎙 "아니, 지금은 안 돼"</button>
       </div>
+      <div class="manual" id="driverSettings">
+        <span class="muted">운전자 설정 (차 화면 ⚙ 설정 대신 누름):</span>
+        <button type="button" data-on="true">기능 ③·④ 켜기</button>
+        <button type="button" data-on="false">모두 끄기</button>
+      </div>
       <ol class="steps" id="steps"><li class="muted" style="display:block">왼쪽에서 시나리오를 고르세요.</li></ol>
     </section>
 
     <section class="panel">
       <h2>엄마 폰 <span class="muted" style="font-weight:400">· 가족 앱 (직접 조작) · <a href="/family" target="_blank" rel="noopener">새 창으로 열기</a></span></h2>
-      <iframe class="phone" src="/family?as=엄마" allow="microphone" title="엄마 폰 가족 앱"></iframe>
+      <iframe class="phone" src="/family?as=엄마&embed=1" allow="microphone" title="엄마 폰 가족 앱"></iframe>
       <h2 style="margin-top:14px">차량 앱 로그</h2>
       <div class="log" id="log"><span class="muted">차가 말한 문장과 판단 근거가 여기에 표시됩니다.</span></div>
     </section>
@@ -258,6 +263,14 @@ a { color: var(--teal); }
 
   $("voice").querySelectorAll("button").forEach(b => b.addEventListener("click", async () => {
     const r = await fetch("/api/driver/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clip: b.dataset.clip }) });
+    if (!r.ok) { const d = await r.json(); alert(d.error); }
+  }));
+
+  // stands in for the driver's taps on the car's settings card; the usage log stays the driver's own choice
+  $("driverSettings").querySelectorAll("button").forEach(b => b.addEventListener("click", async () => {
+    const on = b.dataset.on === "true";
+    const r = await fetch("/api/driver/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cheer_voice: on, safety_alert: on }) });
     if (!r.ok) { const d = await r.json(); alert(d.error); }
   }));
 

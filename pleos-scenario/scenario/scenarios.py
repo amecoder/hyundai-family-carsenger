@@ -148,6 +148,10 @@ class FamilySays:
     command: CarCommand | None = None
 
     def run(self, v: Vehicle, sleep: Sleep, should_stop: ShouldStop) -> None:
+        if self.command and self.command.type == "cheer":
+            # the chat bubble travels with the cheer so the family app can show it waiting until the car plays it
+            CarCommand("cheer", (*self.command.payload, ("feed_text", self.text))).run(v, sleep, should_stop)
+            return
         v.family_says(self.sender, self.text)
         if self.command:
             self.command.run(v, sleep, should_stop)
@@ -239,7 +243,7 @@ def reset(origin: str = "판교 회사", destination: str = "집", eta_min: int 
 
 
 ACADEMY = "○○수학학원 앞"
-STT_NOTE = "(목소리는 공개 TTS 녹음을 마이크 대신 넣음)"
+STT_NOTE = "(목소리는 클로바더빙 녹음을 마이크 대신 넣음)"
 
 PICKUP = Scenario(
     "pickup",

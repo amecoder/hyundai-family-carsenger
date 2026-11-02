@@ -30,12 +30,31 @@ sealed interface Command {
     data class Cheer(val from: String, val text: String, val audioUrl: String? = null, val durationMs: Long = 0) : Command
     /** Demo stand-in for the driver's voice: a clip fed to speech recognition; fallbackAccept applies if nothing is recognised. */
     data class DriverVoice(val clipUrl: String, val fallbackAccept: Boolean) : Command
+    /** Demo stand-in for the driver's taps on the settings screen (the runner's "운전자 설정" buttons); null keeps the value. */
+    data class ApplyDriverSettings(val cheerVoice: Boolean, val safetyAlert: Boolean, val usageRecording: Boolean? = null) : Command
+}
+
+/** Usage event names sent with family messages so the server can measure retention; must match scenario/analytics.py EVENTS. */
+object UsageEvent {
+    const val TRIP_DEPARTED = "trip_departed"
+    const val TRIP_ARRIVED = "trip_arrived"
+    const val REST_STOPPED = "rest_stopped"
+    const val PICKUP_ACCEPTED = "pickup_accepted"
+    const val PICKUP_DECLINED = "pickup_declined"
+    const val PICKUP_ARRIVED = "pickup_arrived"
+    const val PICKUP_TIMED_OUT = "pickup_timed_out"
+    const val BOARDING_CONFIRMED = "boarding_confirmed"
+    const val CHARGE_COMPLETED = "charge_completed"
+    const val SAFETY_ALERT_SENT = "safety_alert_sent"
+    const val CHEER_PLAYED = "cheer_played"
 }
 
 sealed interface Effect {
-    data class FamilyMessage(val text: String) : Effect
+    data class FamilyMessage(val text: String, val event: String) : Effect
     data class Speak(val text: String) : Effect
     data class PlayCheer(val from: String, val text: String, val audioUrl: String? = null, val durationMs: Long = 0) : Effect
+    /** A cheer arrived while the driver has cheers off: not played, and the family is told. */
+    data class CheerSkipped(val from: String, val text: String) : Effect
     data object StopVoice : Effect
     data class ShowScreen(val screen: Screen) : Effect
     data class Note(val text: String) : Effect
@@ -46,7 +65,9 @@ sealed interface Effect {
     data object StopListening : Effect
     data class AddWaypoint(val place: String, val lat: Double, val lon: Double) : Effect
     /** Risky driving reached the alert count on this drive: tell the family so they can send a word of care. */
-    data class SafetyAlert(val text: String) : Effect
+    data class SafetyAlert(val text: String) : Effect {
+        val event: String get() = UsageEvent.SAFETY_ALERT_SENT
+    }
 }
 
 data class Trip(val origin: String, val destination: String, val etaMin: Int, val driver: String, val child: String)
@@ -107,6 +128,13 @@ class Detector(
     private val seatOccupied = mutableMapOf(Side.LEFT to false, Side.RIGHT to false)
     private val occupiedWhenDoorOpened = mutableMapOf(Side.LEFT to false, Side.RIGHT to false)
     private var socPct: Float? = null
+    /** Kept across Reset: a new scenario must not undo the driver's own choice. */
+    var settings = DriverSettings()
+        private set
+
+    fun updateSettings(next: DriverSettings) {
+        settings = next
+    }
 
     fun snapshot() = Snapshot(gear, speedKph, phase, pickup?.place, cheersReceived, trip, drivingSinceMs, socPct, harshBrakes, speedings)
 
@@ -126,12 +154,16 @@ class Detector(
         is Command.DriverReply -> onDriverReply(command.accept)
         is Command.Cheer -> onCheer(command)
         is Command.DriverVoice -> emptyList()
+        is Command.ApplyDriverSettings -> {
+            updateSettings(DriverSettings(command.cheerVoice, command.safetyAlert, command.usageRecording ?: settings.usageRecording))
+            listOf(Effect.Note("운전자 설정: ${settings.summary()}"))
+        }
     }
 
     fun onTick(nowMs: Long): List<Effect> {
         val asked = pickupAskedAtMs
         if (phase == PickupPhase.REQUESTED && asked != null && nowMs - asked >= replyTimeoutMs) {
-            return decline("답이 없어서 경유지를 추가하지 않았어요. 가족에게 전할게요.")
+            return decline("답이 없어서 경유지를 추가하지 않았어요. 가족에게 전할게요.", UsageEvent.PICKUP_TIMED_OUT)
         }
         val out = checkSpeeding(nowMs)
         val since = drivingSinceMs ?: return out
@@ -187,7 +219,8 @@ class Detector(
     }
 
     private fun safetyAlertIfDue(): List<Effect> {
-        if (safetyAlerted || harshBrakes + speedings < safetyAlertAt) return emptyList()
+        // with the alert off the moments are still counted (shown on the car's home screen), only the family is not told
+        if (!settings.safetyAlert || safetyAlerted || harshBrakes + speedings < safetyAlertAt) return emptyList()
         safetyAlerted = true
         val what = when {
             speedings == 0 -> "급제동이 ${harshBrakes}번"
@@ -224,8 +257,8 @@ class Detector(
         if (t != null) {
             departures += 1
             when {
-                phase == PickupPhase.BOARDED -> out += Effect.FamilyMessage("${t.child}와 함께 ${towards(t.destination)} 출발")
-                departures == 1 -> out += Effect.FamilyMessage("${t.driver} ${t.origin}에서 출발, ${t.etaMin}분 뒤 ${t.destination} 도착 예정")
+                phase == PickupPhase.BOARDED -> out += Effect.FamilyMessage("${t.child}와 함께 ${towards(t.destination)} 출발", UsageEvent.TRIP_DEPARTED)
+                departures == 1 -> out += Effect.FamilyMessage("${t.driver} ${t.origin}에서 출발, ${t.etaMin}분 뒤 ${t.destination} 도착 예정", UsageEvent.TRIP_DEPARTED)
             }
         }
         return out
@@ -239,17 +272,17 @@ class Detector(
         when {
             phase == PickupPhase.ACCEPTED -> {
                 phase = PickupPhase.ARRIVED
-                out += Effect.FamilyMessage("${pickup?.place}에 도착했어요")
+                out += Effect.FamilyMessage("${pickup?.place}에 도착했어요", UsageEvent.PICKUP_ARRIVED)
             }
             phase == PickupPhase.BOARDED && t != null -> {
-                out += Effect.FamilyMessage("${t.destination}에 도착해서 주차했어요")
+                out += Effect.FamilyMessage("${t.destination}에 도착해서 주차했어요", UsageEvent.TRIP_ARRIVED)
                 phase = PickupPhase.NONE
                 pickup = null
                 trip = null
             }
-            drovelong -> out += Effect.FamilyMessage("휴게소에서 쉬는 중이에요")
+            drovelong -> out += Effect.FamilyMessage("휴게소에서 쉬는 중이에요", UsageEvent.REST_STOPPED)
             t != null && departures > 0 && phase == PickupPhase.NONE -> {
-                out += Effect.FamilyMessage("${t.destination}에 도착해서 주차했어요")
+                out += Effect.FamilyMessage("${t.destination}에 도착해서 주차했어요", UsageEvent.TRIP_ARRIVED)
                 trip = null
             }
         }
@@ -259,6 +292,7 @@ class Detector(
 
     private fun onCheer(c: Command.Cheer): List<Effect> {
         cheersReceived += 1
+        if (!settings.cheerVoice) return listOf(Effect.CheerSkipped(c.from, c.text))
         val play = Effect.PlayCheer(c.from, c.text, c.audioUrl, c.durationMs)
         // while driving Pleos covers third-party screens, so only the voice plays; parked, the cheer card shows too
         return if (gear == GearState.DRIVE) listOf(play) else listOf(Effect.ShowScreen(Screen.CHEER), play)
@@ -286,18 +320,18 @@ class Detector(
         )
     }
 
-    private fun decline(spoken: String): List<Effect> {
+    private fun decline(spoken: String, event: String): List<Effect> {
         val back = Effect.ShowScreen(if (gear == GearState.DRIVE) Screen.DRIVING else Screen.HOME)
         phase = PickupPhase.NONE
         pickup = null
         pickupAskedAtMs = null
-        return listOf(Effect.StopListening, back, Effect.Speak(spoken), Effect.FamilyMessage("지금은 들를 수 없어요. 조금만 기다려 줘"))
+        return listOf(Effect.StopListening, back, Effect.Speak(spoken), Effect.FamilyMessage("지금은 들를 수 없어요. 조금만 기다려 줘", event))
     }
 
     private fun onDriverReply(accept: Boolean): List<Effect> {
         val p = pickup
         if (phase != PickupPhase.REQUESTED || p == null) return emptyList()
-        if (!accept) return decline("알겠어요. 가족에게 전할게요.")
+        if (!accept) return decline("알겠어요. 가족에게 전할게요.", UsageEvent.PICKUP_DECLINED)
         val back = Effect.ShowScreen(if (gear == GearState.DRIVE) Screen.DRIVING else Screen.HOME)
         phase = PickupPhase.ACCEPTED
         pickupAskedAtMs = null
@@ -306,7 +340,7 @@ class Detector(
             Effect.StopListening,
             back,
             Effect.Speak("${p.place}을 경유지로 추가했어요."),
-            Effect.FamilyMessage("${driver}가 가는 중, ${p.etaMin}분 뒤 ${p.place} 도착"),
+            Effect.FamilyMessage("${driver}가 가는 중, ${p.etaMin}분 뒤 ${p.place} 도착", UsageEvent.PICKUP_ACCEPTED),
             Effect.Banner("경유지: ${p.place} · ${p.etaMin}분"),
         )
         if (p.lat != null && p.lon != null) out += Effect.AddWaypoint(p.place, p.lat, p.lon)
@@ -326,7 +360,7 @@ class Detector(
         if (!boarded) return listOf(Effect.Note("${sideLabel(side)} 뒷문 개폐 · 착석 신호 없음 → 탑승 알림 보내지 않음"))
         phase = PickupPhase.BOARDED
         val child = pickup?.by ?: trip?.child ?: "가족"
-        return listOf(Effect.FamilyMessage("뒷좌석 탑승 확인 ($child)"), Effect.Note("${sideLabel(side)} 뒷문 + ${sideLabel(side)} 뒷좌석 착석 → 탑승 확인"))
+        return listOf(Effect.FamilyMessage("뒷좌석 탑승 확인 ($child)", UsageEvent.BOARDING_CONFIRMED), Effect.Note("${sideLabel(side)} 뒷문 + ${sideLabel(side)} 뒷좌석 착석 → 탑승 확인"))
     }
 
     private fun onSeat(side: Side, occupied: Boolean): List<Effect> {
@@ -338,7 +372,7 @@ class Detector(
         val prev = socPct
         socPct = pct
         return if (prev != null && prev < chargeTargetPct && pct >= chargeTargetPct) {
-            listOf(Effect.FamilyMessage("충전 ${chargeTargetPct.toInt()}% 완료, 출발 가능"))
+            listOf(Effect.FamilyMessage("충전 ${chargeTargetPct.toInt()}% 완료, 출발 가능", UsageEvent.CHARGE_COMPLETED))
         } else {
             emptyList()
         }
