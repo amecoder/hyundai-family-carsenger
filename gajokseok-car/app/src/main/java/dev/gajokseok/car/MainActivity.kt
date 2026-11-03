@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.StateListDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -106,11 +107,11 @@ class MainActivity : Activity() {
         startForegroundService(Intent(this, GajokService::class.java))
         voice = Voice(this) { ok, err -> main.post { if (!ok) showNote("음성 합성(TTS)을 쓸 수 없어 화면 문구로만 안내합니다 ($err)") } }
         cheers = CheerPlayer(voice, onStart = ::showCheer, onIdle = ::hideCheer)
-        ears = Ears(this, onReply = { accept, text -> showNote("운전자 음성 \"$text\" → ${if (accept) "추가" else "취소"}"); link.post("note", "운전자 음성 인식: \"$text\""); handleCommand(Command.DriverReply(accept)) }, onHeard = { listenHint.text = "🎙 들은 말: \"$it\"" })
+        ears = Ears(this, onReply = { accept, text -> showNote("운전자 음성 \"$text\" → ${if (accept) "추가" else "취소"}"); link.post("note", "운전자 음성 인식: \"$text\""); handleCommand(Command.DriverReply(accept)) }, onHeard = { listenHint.text = "들은 말: \"$it\"" })
         navi = NaviLink(this) { text -> showNote(text); link.post("note", text) }
         link = FamilyLink(
             onCommand = ::handleCommand,
-            onConnection = { ok -> linkValue.text = if (ok) "● 가족 서버 연결됨" else "○ 가족 서버 연결 안 됨"; linkValue.setTextColor(if (ok) Palette.green else Palette.red) },
+            onConnection = { ok -> linkValue.text = if (ok) "● 가족 서버 연결됨" else "○ 가족 서버 연결 안 됨"; linkValue.setTextColor(if (ok) Palette.sky else Palette.red) },
         )
         vehicle = VehicleSource(this, ::handleSignal) { msg -> showNote("차량 신호 오류: $msg") }
         vehicle.start()
@@ -142,7 +143,7 @@ class MainActivity : Activity() {
     private fun handleCommand(c: Command) {
         when (c) {
             is Command.PickupRequest -> { stopListening(); addBubble(c.by, "데리러 와 · ${c.place}", fromCar = false) }
-            is Command.Cheer -> addBubble(c.from, "🎙 응원 ${if (c.audioUrl != null) "녹음" else "음성"} \"${c.text}\"", fromCar = false)
+            is Command.Cheer -> addBubble(c.from, "응원 ${if (c.audioUrl != null) "녹음" else "음성"} \"${c.text}\"", fromCar = false)
             Command.Reset -> { timeline.removeAllViews(); stopListening(); navi.clear() }
             is Command.DriverVoice -> hearDriverClip(c)
             else -> Unit
@@ -182,10 +183,10 @@ class MainActivity : Activity() {
                 is Effect.FamilyMessage -> { addBubble("차", e.text, fromCar = true); driveLast.text = "가족에게 보냄: ${e.text}"; link.post("message", e.text, detector.settings.usageEvent(e.event)) }
                 is Effect.Speak -> { voice.say(e.text); link.post("speak", e.text) }
                 is Effect.PlayCheer -> cheers.play(e)
-                is Effect.CheerSkipped -> { showNote("${e.from}의 응원이 왔지만 응원 듣기가 꺼져 있어요 · ⚙ 설정"); link.post("cheer_skipped", "${e.from}: ${e.text}") }
+                is Effect.CheerSkipped -> { showNote("${e.from}의 응원이 왔지만 응원 듣기가 꺼져 있어요 · 설정"); link.post("cheer_skipped", "${e.from}: ${e.text}") }
                 Effect.StopVoice -> { voice.stop(); cheers.stop(); hideCheer(); stopListening() }
                 Effect.StopListening -> stopListening()
-                Effect.ListenForReply -> { listenHint.text = "'응' 또는 '아니'라고 말해 주세요"; voice.afterSpeech { listenHint.text = "🎙 듣는 중 · '응' 또는 '아니'"; ears.listen() } }
+                Effect.ListenForReply -> { listenHint.text = "'응' 또는 '아니'라고 말해 주세요"; voice.afterSpeech { listenHint.text = "듣는 중 · '응' 또는 '아니'"; ears.listen() } }
                 is Effect.AddWaypoint -> navi.addPickup(e.place, e.lat, e.lon)
                 is Effect.ShowScreen -> show(e.screen)
                 is Effect.Note -> { showNote(e.text); link.post("note", e.text) }
@@ -266,7 +267,7 @@ class MainActivity : Activity() {
         val s = detector.snapshot()
         val moving = s.gear == GearState.DRIVE
         statusPill.text = if (moving) "● 주행 중" else "● 정차 중 · 기어 ${gearLabel(s.gear)}"
-        statusPill.setTextColor(if (moving) Palette.amber else Palette.green)
+        statusPill.setTextColor(if (moving) Palette.accent else Palette.sky)
         stateValue.text = if (moving) "주행 중 · 기어 D" else "정차 중 · 기어 ${gearLabel(s.gear)}"
         tripValue.text = s.trip?.let { "${it.origin} → ${it.destination} · 약 ${it.etaMin}분" } ?: "설정된 목적지 없음"
         pickupValue.text = when (s.pickup) {
@@ -278,7 +279,7 @@ class MainActivity : Activity() {
         }
         val settings = detector.settings
         cheerValue.text = when {
-            !settings.cheerVoice -> "듣기 꺼 둠 · ⚙ 설정에서 켜기"
+            !settings.cheerVoice -> "듣기 꺼 둠 · 설정에서 켜기"
             s.cheersReceived == 0 -> "없음"
             else -> "${s.cheersReceived}개 · 받는 즉시 재생"
         }
@@ -292,14 +293,14 @@ class MainActivity : Activity() {
 
     private fun addBubble(sender: String, text: String, fromCar: Boolean) {
         val r = row(gap = 14)
-        val avatar = label(sender.take(1), 18f, Color.WHITE, bold = true).apply {
+        val avatar = label(sender.take(1), 18f, Palette.bg, bold = true).apply {
             gravity = Gravity.CENTER
-            background = rounded(if (fromCar) Palette.amber else Palette.teal, dp(22).toFloat())
+            background = rounded(if (fromCar) Palette.accent else Palette.sand, dp(22).toFloat())
         }
         r.addView(avatar, LinearLayout.LayoutParams(dp(44), dp(44)))
         val col = column()
-        col.addView(label(text, 22f, if (fromCar) Palette.amberInk else Palette.tealInk).apply {
-            background = rounded(if (fromCar) Palette.amberSoft else Palette.tealSoft, dp(16).toFloat())
+        col.addView(label(text, 22f, if (fromCar) Palette.sky else Palette.sand).apply {
+            background = rounded(if (fromCar) Palette.brand else Palette.sandSoft, dp(12).toFloat())
             setPadding(dp(18), dp(12), dp(18), dp(12))
         }, lp(WRAP_CONTENT))
         col.addView(label("${if (fromCar) "현대 패밀리 카신저 차량 알림" else sender} · ${clock.format(Date())}", 14f, Palette.muted).apply {
@@ -320,8 +321,9 @@ class MainActivity : Activity() {
         cheerCard = buildCheerCard()
         settingsCard = DriverSettingsCard(this, onChange = ::changeSettings, onClose = { settingsCard.view.gone(true) })
         noteBar = label("", 18f, Palette.ink).apply {
-            background = rounded(Palette.panel2, dp(14).toFloat(), Palette.line)
+            background = rounded(Palette.panel2, dp(12).toFloat())
             setPadding(dp(22), dp(14), dp(22), dp(14))
+            raise(2)
             gone(true)
         }
         root.addView(home, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
@@ -344,24 +346,24 @@ class MainActivity : Activity() {
         titles.addView(label("현대 패밀리 카신저 · 가족방", 16f, Palette.muted))
         titles.addView(label("우리 가족, 오늘도 함께", 34f, bold = true))
         header.addView(titles, lp(0, WRAP_CONTENT, 1f))
-        header.addView(button("⚙ 설정", Palette.panel2, Palette.ink) { openSettings() }.apply { textSize = 18f },
+        header.addView(button("설정", Palette.panel2, Palette.ink) { openSettings() }.apply { textSize = 18f },
             lp(WRAP_CONTENT, dp(60)).apply { rightMargin = dp(16) })
-        statusPill = label("● 정차 중", 18f, Palette.green).apply {
-            background = rounded(Palette.panel2, dp(24).toFloat())
+        statusPill = label("● 정차 중", 18f, Palette.sky).apply {
+            background = rounded(Palette.panel2, dp(12).toFloat())
             setPadding(dp(20), dp(10), dp(20), dp(10))
         }
         header.addView(statusPill, lp(WRAP_CONTENT))
         page.addView(header)
 
         val body = row(gap = 24).apply { gravity = Gravity.TOP }
-        val left = column(padding = 26).apply { background = rounded(Palette.panel, dp(22).toFloat(), Palette.line) }
+        val left = column(padding = 26).apply { background = rounded(Palette.panel, dp(12).toFloat()); raise(1) }
         left.addView(label("오늘의 가족방", 22f, bold = true).apply { setPadding(0, 0, 0, dp(16)) })
         timeline = column()
         timelineScroll = ScrollView(this).apply { addView(timeline) }
         left.addView(timelineScroll, lp(MATCH_PARENT, 0, 1f))
         body.addView(left, lp(0, MATCH_PARENT, 1.55f))
 
-        val right = column(padding = 26, gap = 18).apply { background = rounded(Palette.panel, dp(22).toFloat(), Palette.line) }
+        val right = column(padding = 26, gap = 18).apply { background = rounded(Palette.panel, dp(12).toFloat()); raise(1) }
         right.addView(label("차량과 가족", 22f, bold = true))
         right.addView(buildMyCar())
         stateValue = statusRow(right, "현재 상태")
@@ -379,7 +381,7 @@ class MainActivity : Activity() {
 
     private fun buildMyCar(): View {
         val box = row(gap = 20).apply {
-            background = rounded(Palette.panel2, dp(16).toFloat())
+            background = rounded(Palette.panel2, dp(12).toFloat())
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
         box.addView(CarView(this), LinearLayout.LayoutParams(dp(300), dp(126)))
@@ -392,7 +394,7 @@ class MainActivity : Activity() {
     }
 
     private fun statusRow(parent: LinearLayout, title: String): TextView {
-        val box = column(padding = 16).apply { background = rounded(Palette.panel2, dp(16).toFloat()) }
+        val box = column(padding = 16).apply { background = rounded(Palette.panel2, dp(12).toFloat()) }
         box.addView(label(title, 15f, Palette.muted))
         val value = label("—", 22f, bold = true)
         box.addView(value)
@@ -404,9 +406,9 @@ class MainActivity : Activity() {
         val page = column(padding = 60, gap = 26).apply { gravity = Gravity.CENTER }
         page.addView(label("현대 패밀리 카신저", 20f, Palette.muted).apply { gravity = Gravity.CENTER })
         page.addView(label("주행 중에는 음성으로만 안내합니다", 36f, bold = true).apply { gravity = Gravity.CENTER })
-        driveBanner = label("", 24f, Palette.amberInk).apply {
+        driveBanner = label("", 24f, Palette.sky).apply {
             gravity = Gravity.CENTER
-            background = rounded(Palette.amberSoft, dp(20).toFloat())
+            background = rounded(Palette.brand, dp(12).toFloat())
             setPadding(dp(30), dp(18), dp(30), dp(18))
             gone(true)
         }
@@ -417,14 +419,14 @@ class MainActivity : Activity() {
     }
 
     private fun buildPickupCard(): View {
-        val card = column(padding = 36, gap = 22).apply { background = rounded(Palette.panel2, dp(28).toFloat(), Palette.amber) }
-        card.addView(label("🎙 픽업 요청", 18f, Palette.amber, bold = true))
+        val card = column(padding = 36, gap = 22).apply { background = rounded(Palette.brand, dp(12).toFloat()); raise(3) }
+        card.addView(label("픽업 요청", 18f, Palette.accent, bold = true))
         pickupText = label("", 30f, bold = true)
         card.addView(pickupText)
         listenHint = label("'응' 또는 '아니'라고 말해 주세요", 18f, Palette.muted)
         card.addView(listenHint)
         val buttons = row(gap = 16)
-        buttons.addView(button("추가", Palette.amber, Color.parseColor("#1B1B1B")) { handleCommand(Command.DriverReply(true)) }, lp(0, dp(76), 1f))
+        buttons.addView(button("추가", Palette.accent, Palette.bg) { handleCommand(Command.DriverReply(true)) }, lp(0, dp(76), 1f))
         buttons.addView(button("취소", Palette.panel, Palette.ink) { handleCommand(Command.DriverReply(false)) }, lp(0, dp(76), 1f))
         card.addView(buttons)
         return card
@@ -432,13 +434,13 @@ class MainActivity : Activity() {
 
     private fun buildCheerCard(): View {
         val card = row(gap = 24).apply {
-            background = rounded(Palette.tealSoft, dp(26).toFloat(), Palette.teal)
+            background = rounded(Palette.sandSoft, dp(12).toFloat())
             setPadding(dp(30), dp(24), dp(30), dp(24))
+            raise(3)
         }
-        card.addView(label("🎙", 40f))
         val text = column()
-        cheerTitle = label("", 26f, Palette.tealInk, bold = true)
-        cheerText = label("", 24f, Palette.tealInk)
+        cheerTitle = label("", 26f, Palette.sand, bold = true)
+        cheerText = label("", 24f, Palette.sand)
         text.addView(cheerTitle)
         text.addView(cheerText)
         cheerMeta = label("", 15f, Palette.muted)
@@ -446,7 +448,7 @@ class MainActivity : Activity() {
         card.addView(text, lp(0, WRAP_CONTENT, 1f))
         val wave = row(gap = 6)
         repeat(9) {
-            val bar = View(this).apply { background = rounded(Palette.teal, dp(4).toFloat()) }
+            val bar = View(this).apply { background = rounded(Palette.sand, dp(4).toFloat()) }
             bars += bar
             wave.addView(bar, LinearLayout.LayoutParams(dp(8), dp(46)))
         }
@@ -472,7 +474,13 @@ class MainActivity : Activity() {
         textSize = 24f
         setTextColor(fg)
         isAllCaps = false
-        background = rounded(bg, dp(18).toFloat(), Palette.line)
+        typeface = font(bold = true)
+        stateListAnimator = null // flat buttons: pressed state is shown by the overlay below, not a lift
+        // Material state layer: 12% of the text color over the fill while pressed
+        background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), rounded(overlay(fg, bg, 0.12f), dp(12).toFloat()))
+            addState(intArrayOf(), rounded(bg, dp(12).toFloat()))
+        }
         setOnClickListener { onClick() }
     }
 }

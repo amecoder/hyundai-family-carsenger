@@ -155,7 +155,8 @@ class Detector(
         is Command.Cheer -> onCheer(command)
         is Command.DriverVoice -> emptyList()
         is Command.ApplyDriverSettings -> {
-            updateSettings(DriverSettings(command.cheerVoice, command.safetyAlert, command.usageRecording ?: settings.usageRecording))
+            // a remote command may only opt out of the usage log; opting in is the driver's own switch
+            updateSettings(DriverSettings(command.cheerVoice, command.safetyAlert, settings.usageRecording && command.usageRecording != false))
             listOf(Effect.Note("운전자 설정: ${settings.summary()}"))
         }
     }

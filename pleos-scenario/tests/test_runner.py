@@ -327,7 +327,7 @@ def test_cheer_posts_chat_bubble_and_car_command_as_one_call() -> None:
     # one call, so the family app never sees the bubble before it is linked to the cheer the car will play
     client = RecordingClient()
     run_sync(Scenario("c", "c", "c", (Step("응원", "", "", (cheer("엄마", "우유도 잊지 마", "cheer_mom_milk"),)),)), client)
-    assert client.calls == [("car", "cheer", (("clip", "cheer_mom_milk"), ("feed_text", "🎙 응원 음성 \"우유도 잊지 마\""),
+    assert client.calls == [("car", "cheer", (("clip", "cheer_mom_milk"), ("feed_text", "응원 음성 \"우유도 잊지 마\""),
                                              ("from", "엄마"), ("text", "우유도 잊지 마")))]
 
 

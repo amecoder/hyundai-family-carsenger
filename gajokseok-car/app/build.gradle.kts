@@ -8,8 +8,8 @@ android {
         applicationId = "dev.gajokseok.car"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.2"
+        versionCode = 2
+        versionName = "0.3"
     }
     buildTypes {
         // contest reviewers install the APK on the emulator directly: sign release with the debug key

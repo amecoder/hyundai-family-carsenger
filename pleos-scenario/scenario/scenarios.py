@@ -182,7 +182,7 @@ def pickup_request(by: str, place: str, eta_min: int) -> FamilySays:
 
 def cheer(sender: str, text: str, clip: str, label: str = "응원 음성") -> FamilySays:
     """A family voice message; clip names the recording in the voice folder (<clip>.wav) that the car plays."""
-    return FamilySays(sender, f"🎙 {label} \"{text}\"", CarCommand("cheer", (("from", sender), ("text", text), ("clip", clip))))
+    return FamilySays(sender, f"{label} \"{text}\"", CarCommand("cheer", (("from", sender), ("text", text), ("clip", clip))))
 
 
 def driver_says(accept: bool) -> CarCommand:

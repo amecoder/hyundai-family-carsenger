@@ -3,7 +3,7 @@ package dev.gajokseok.car.core
 /**
  * The driver's own switches. Plan v0.6 makes 기능 ③·④ opt-in, so everything starts off.
  * cheerVoice = family voice cheers play in the car; safetyAlert = repeated risky driving is reported to the family room;
- * usageRecording = the car names its events for the retention log (the family app asks its members separately).
+ * usageRecording = the car names its events for the retention log (the family side's consent is one per family, not per member).
  */
 data class DriverSettings(
     val cheerVoice: Boolean = false,

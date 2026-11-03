@@ -5,25 +5,44 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>카신저 재방문율</title>
 <style>
-:root { --bg: #f5f7fb; --surface: #fff; --ink: #172033; --muted: #6b7487; --line: #e3e7ef; --teal: #0e7a76; --teal-soft: #d6eeeb; }
+@font-face { font-family: "Asta Sans"; src: url("/fonts/AstaSans.woff2") format("woff2"); font-weight: 300 800; font-display: swap; }
+:root {
+  color-scheme: dark;
+  /* Hyundai CI: Hyundai Blue #002c5f, Active Blue #00aad2, Sand #e4dcd3, Sky Blue #aacae6, Active Red #e63312 */
+  --bg: #000d1c; --surface: #0d1927; --surface-2: #14202e; --raised: #1c2835; --line: #2a3541;
+  --ink: #ffffff; --sand: #e4dcd3; --muted: #a09e9c; --brand: #002c5f; --sky: #aacae6;
+  --car: #00aad2; --car-soft: #002c5f; --car-line: rgba(170, 202, 230, .35);
+  --act: #00aad2; --on-act: #000d1c; --act-ink: #aacae6; --act-soft: rgba(0, 170, 210, .2);
+  --red: #ef7a65; --red-fill: #e63312; --red-soft: rgba(230, 51, 18, .18);
+  --warn: #c8a695; --warn-soft: rgba(163, 107, 79, .24); --warn-line: rgba(200, 166, 149, .45);
+  --ok: #aacae6; --ok-soft: rgba(170, 202, 230, .14);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .45), 0 1px 3px 1px rgba(0, 0, 0, .25);
+  --shadow-2: 0 2px 6px 2px rgba(0, 0, 0, .35), 0 1px 2px rgba(0, 0, 0, .45);
+}
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "IBM Plex Sans KR", "Noto Sans KR", system-ui, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Asta Sans", "Noto Sans KR", system-ui, sans-serif; }
 main { max-width: 860px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 14px; }
 h1 { font-size: 1.25rem; margin: 0; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.card { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-1); padding: 14px 16px; }
 .card h2 { font-size: .95rem; margin: 0 0 8px; }
 .note { color: var(--muted); font-size: .8rem; margin: 6px 0 0; }
 .kpis { display: flex; gap: 10px; flex-wrap: wrap; }
-.kpi { flex: 1; min-width: 150px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.kpi { flex: 1; min-width: 150px; background: var(--brand); border-radius: 12px; box-shadow: var(--shadow-1); padding: 12px 14px; }
 .kpi b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
-.kpi span { color: var(--muted); font-size: .8rem; }
+.kpi span { color: var(--sky); font-size: .8rem; }
 table { width: 100%; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
 th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; }
 th:first-child, td:first-child { text-align: left; }
 th { color: var(--muted); font-weight: 600; }
-td.na { color: #b0b7c3; }
+td.na { color: var(--muted); opacity: .6; }
 .empty { color: var(--muted); font-size: .85rem; }
-code { background: var(--bg); border-radius: 4px; padding: 0 4px; }
+code { background: var(--raised); border-radius: 4px; padding: 0 4px; }
+/* Material-style layer (Hyundai shape: small radii, medium-weight titles) */
+h1, h2, h3 { font-weight: 600; letter-spacing: -.01em; }
+button { transition: background-color .15s ease, box-shadow .15s ease; }
+button:not(:disabled):hover { background-image: linear-gradient(rgba(var(--state, 255, 255, 255), .08), rgba(var(--state, 255, 255, 255), .08)); }
+button:not(:disabled):active { background-image: linear-gradient(rgba(var(--state, 255, 255, 255), .12), rgba(var(--state, 255, 255, 255), .12)); }
+:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -67,7 +86,7 @@ function render(data) {
   const families = r.cohorts.reduce((n, c) => n + c.size, 0);
   kpis.innerHTML = kpi(data.consent ? "동의함" : "동의 전", "이 가족의 기록 동의")
     + kpi(families, "코호트에 들어간 가족 수")
-    + kpi(data.events - r.scripted_events, "실제 사용 이벤트")
+    + kpi(data.events - r.scripted_events, "live 이벤트 (리허설 포함)")
     + kpi(r.scripted_events, "시연 대본 이벤트 (제외)")
     + kpi(r.guardrails.pickup_answers ? pct(r.guardrails.pickup_declined_ratio) : "—",
           `픽업 거절 비율 (가드레일, 응답 ${r.guardrails.pickup_answers}건 · 무응답 ${r.guardrails.pickup_timeouts}건 별도)`);

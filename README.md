@@ -26,19 +26,21 @@
 
 | # | 시나리오 (누르면 영상) | 확인하는 것 | 길이 |
 |---|---|---|---|
-| 1 | [평일 학원 픽업](https://amecoder.github.io/hyundai-family-carsenger/#pickup) | 판교 회사에서 퇴근 → 민지의 픽업 요청 → 음성 승인 → 학원 도착 → 뒷좌석 탑승 확인 → 집으로 가는 길에 엄마 응원 (기능 ①②③) | 59초 |
-| 2 | [출발 전 픽업 요청 · 오른쪽 탑승](https://amecoder.github.io/hyundai-family-carsenger/#parked_pickup) | 동네 마트 주차장에 있을 때 온 픽업 요청은 화면 카드로 보이고, 오른쪽 뒷문 탑승도 확인하며, 주차 중 응원은 카드와 함께 바로 재생하는지 확인 | 59초 |
+| 1 | [평일 학원 픽업](https://amecoder.github.io/hyundai-family-carsenger/#pickup) | 판교 회사에서 퇴근 → 민지의 픽업 요청 → 음성 승인 → 학원 도착 → 뒷좌석 탑승 확인 → 집으로 가는 길에 엄마 응원 (기능 ①②③) | 57초 |
+| 2 | [출발 전 픽업 요청 · 오른쪽 탑승](https://amecoder.github.io/hyundai-family-carsenger/#parked_pickup) | 동네 마트 주차장에 있을 때 온 픽업 요청은 화면 카드로 보이고, 오른쪽 뒷문 탑승도 확인하며, 주차 중 응원은 카드와 함께 바로 재생하는지 확인 | 58초 |
 | 3 | [픽업 거절 (지금은 못 들름)](https://amecoder.github.io/hyundai-family-carsenger/#pickup_decline) | 분당 사무실에서 헬스장으로 가는 중 민지의 픽업 요청에 아빠가 "아니"라고 하면, 차는 경로를 바꾸지 않고 가족에게 거절 이유를 대신 전하는지 확인 | 37초 |
 | 4 | [짐만 실음 (오탐 방지)](https://amecoder.github.io/hyundai-family-carsenger/#luggage) | 동네 카페에서 태권도장으로 민지를 데리러 감 → 뒷문으로 가방만 실으면 알림이 가지 않고, 실제로 앉았을 때만 탑승 확인이 가는지 확인 | 39초 |
-| 5 | [주말 장거리 · 할머니 댁](https://amecoder.github.io/hyundai-family-carsenger/#long_drive) | 집에서 전주 할머니 댁으로 → 고속도로에서 민지 응원이 바로 재생 → 2시간 연속 운전(시연용 20초)이면 휴식 권유 → 휴게소 정차 알림 (기능 ①③) | 64초 |
+| 5 | [주말 장거리 · 할머니 댁](https://amecoder.github.io/hyundai-family-carsenger/#long_drive) | 집에서 전주 할머니 댁으로 → 고속도로에서 민지 응원이 바로 재생 → 2시간 연속 운전(시연용 20초)이면 휴식 권유 → 휴게소 정차 알림 (기능 ①③) | 62초 |
 | 6 | [혼자 장거리 출장 (휴식 권유)](https://amecoder.github.io/hyundai-family-carsenger/#solo_long_drive) | 판교 사무실에서 부산 출장지로 → 응원이 없어도 2시간 연속 운전(시연용 20초)이면 휴식을 권하고, 휴게소 정차를 가족에게 알리는지 확인 | 49초 |
-| 7 | [급제동·과속 → 가족 응원](https://amecoder.github.io/hyundai-family-carsenger/#safe_driving) | 혼자 퇴근하는 아빠가 과속 1번·급제동 1번을 하면 가족방에 안전 알림이 가고, 엄마의 빠른 답장 목소리가 주행 중인 차에서 바로 재생되는지 확인 (기능 ①④) | 56초 |
-| 8 | [응원이 연달아 온 날 (차례로 재생)](https://amecoder.github.io/hyundai-family-carsenger/#many_cheers) | 집에서 마트로 가는 중 엄마·민지의 응원 4개가 연달아 와도 겹치지 않고 도착한 순서대로 하나씩 재생하는지 확인 (기능 ③) | 38초 |
+| 7 | [급제동·과속 → 가족 응원](https://amecoder.github.io/hyundai-family-carsenger/#safe_driving) | 혼자 퇴근하는 아빠가 과속 1번·급제동 1번을 하면 가족방에 안전 알림이 가고, 엄마의 빠른 답장 목소리가 주행 중인 차에서 바로 재생되는지 확인 (기능 ①④) | 55초 |
+| 8 | [응원이 연달아 온 날 (차례로 재생)](https://amecoder.github.io/hyundai-family-carsenger/#many_cheers) | 집에서 마트로 가는 중 엄마·민지의 응원 4개가 연달아 와도 겹치지 않고 도착한 순서대로 하나씩 재생하는지 확인 (기능 ③) | 37초 |
 | 9 | [EV 충전 완료 알림](https://amecoder.github.io/hyundai-family-carsenger/#ev_charge) | 아파트 충전소에 주차해 충전 중, 충전량이 목표(80%)에 도달하면 가족에게 알림 (기능 ①) | 25초 |
 
 > 녹화 조건: 모든 영상은 실제 Pleos Connect 에뮬레이터 v2.1.0 녹화입니다. 차량 신호는 Virtual Console을 자동으로 조작했고, 운전자 목소리와 엄마·민지의 목소리는 클로바더빙 AI 보이스로 만든 녹음을 마이크 대신 넣었습니다(운전자 답은 Pleos STT가 실제로 인식하고, 가족 목소리는 녹음 그대로 재생). 영상의 소리는 에뮬레이터 소리를 PC에서 녹음한 것이 아니라, 실행기가 기록한 소리 시각에 맞춰 같은 녹음 파일을 합친 것입니다. 그래서 차 안내 음성은 Pleos TTS를 그대로 녹음한 소리가 아니라 같은 문장을 클로바더빙 목소리로 읽은 녹음입니다. 장거리 시나리오는 2시간 연속 운전을 20초로 줄였습니다. 녹화 스크립트: `pleos-scenario/record_demo.cjs`(시나리오별), `pleos-scenario/record_family_demo.cjs`(직접 조작), `pleos-scenario/demo_audio.cjs`(소리 합성).
 >
 > 본 영상에는 클로바더빙(CLOVA Dubbing)의 AI 보이스가 사용되었습니다. #클로바더빙 #지윤 #다인 #기태 #진호 https://clovadubbing.naver.com
+>
+> 화면 디자인: 웹 화면과 차량 앱의 글꼴은 42dot이 만든 Pleos Connect 시스템 글꼴 Asta Sans입니다(SIL Open Font License 1.1, Copyright 2024 The Asta Sans Project Authors, https://github.com/42dot/Asta-Sans). 색은 현대자동차 공식 CI 색상 페이지(https://www.hyundai.com/kr/ko/info/ci/ci-color)를 따랐고, 현대자동차 로고는 사용하지 않았습니다.
 
 ## 저장소 구성
 
@@ -57,12 +59,12 @@
 - **차가 먼저 알림**: 출발, 도착, 뒷좌석 탑승, 장시간 운전 휴식, 충전 상태를 가족 대화방에 보냅니다.
 - **픽업 요청을 목소리로 처리**: 가족이 「데리러 와」를 보내면 차가 음성으로 묻고, 운전자가 "응, 추가해 줘" / "아니, 지금은 안 돼"로 답합니다(Pleos 음성 인식). 승인하면 내비에 픽업 장소가 경로 또는 경유지로 들어갑니다(NaviHelper).
 - **가족 목소리 바로 재생**: 가족이 녹음한 응원(최대 15초)을 차가 받는 즉시 녹음 그대로 재생합니다. 주행 중에는 소리만, 정차 중에는 응원 카드도 보입니다. 여러 개가 오면 받은 순서대로 하나씩 재생합니다.
-- **운전자가 켜고 끄기**: 기능 ③(가족 목소리 바로 재생)·④(안전 운전 응원)와 서비스 개선용 사용 기록은 운전자가 차 화면 ⚙ 설정(기어 P에서만)에서 켜야 작동합니다. 셋 다 기본은 꺼짐입니다. 응원 듣기가 꺼져 있으면 가족방의 그 응원에 「🔇 운전자가 응원 듣기를 꺼 둠」이 표시됩니다.
+- **운전자가 켜고 끄기**: 기능 ③(가족 목소리 바로 재생)·④(안전 운전 응원)와 서비스 개선용 사용 기록은 운전자가 차 화면 「설정」(기어 P에서만)에서 켜야 작동합니다. 셋 다 기본은 꺼짐입니다. 응원 듣기가 꺼져 있으면 가족방의 그 응원에 「운전자가 응원 듣기를 꺼 둠」이 표시됩니다.
 - **안전 운전 응원**: 한 번 주행에서 급제동(1초에 시속 30km 이상 감속)이나 과속(시속 110km 초과 10초)이 합쳐 2번이면 가족방에 한 번 알립니다. 가족이 빠른 답장("천천히 와도 돼. 안전이 제일이야")을 누르면 그 목소리가 주행 중인 차에서 바로 재생됩니다. 기준값은 데모용입니다.
 
 ## APK 위치
 
-- `apk/nemo_현대패밀리카신저_release.apk` (release 빌드, 버전 0.2(11-02 빌드), 패키지 `dev.gajokseok.car`. 심사용 설치를 위해 디버그 키로 서명)
+- `apk/nemo_현대패밀리카신저_release.apk` (release 빌드, 버전 0.3(11-03 빌드), 패키지 `dev.gajokseok.car`. 심사용 설치를 위해 디버그 키로 서명)
 
 ## 테스트 환경
 
@@ -79,7 +81,7 @@ adb install -r --user 10 "apk/nemo_현대패밀리카신저_release.apk"
 adb shell am start --user 10 -n dev.gajokseok.car/.MainActivity
 ```
 
-Pleos 에뮬레이터의 화면 사용자는 10번입니다. Virtual Console에서 기어·2열 문·2열 착석을 바꾸면 앱이 반응합니다. 가족 목소리 재생(기능 ③)과 안전 운전 응원(기능 ④)은 처음 설치하면 꺼져 있으니, 기어 P에서 차 화면 오른쪽 위 ⚙ 설정을 눌러 켜세요.
+Pleos 에뮬레이터의 화면 사용자는 10번입니다. Virtual Console에서 기어·2열 문·2열 착석을 바꾸면 앱이 반응합니다. 가족 목소리 재생(기능 ③)과 안전 운전 응원(기능 ④)은 처음 설치하면 꺼져 있으니, 기어 P에서 차 화면 오른쪽 위 「설정」을 눌러 켜세요.
 
 ### 2. 전체 데모 (추천)
 
@@ -88,7 +90,7 @@ cd pleos-scenario
 ./start_demo.sh
 ```
 
-에뮬레이터 부팅, 차량 앱 빌드·설치, 실행기 서버 시작까지 한 번에 합니다. 브라우저에서 http://127.0.0.1:8090 을 열고 먼저 「운전자 설정 → 기능 ③·④ 켜기」를 한 번 누른 뒤(차 화면 ⚙ 설정 대역) 시나리오 버튼을 누르거나, 오른쪽 가족 앱에서 직접 「데리러 와」·「응원 녹음」을 보내 보세요. 자세한 내용은 [`pleos-scenario/README.md`](pleos-scenario/README.md)에 있습니다.
+에뮬레이터 부팅, 차량 앱 빌드·설치, 실행기 서버 시작까지 한 번에 합니다. 브라우저에서 http://127.0.0.1:8090 을 열고 먼저 「운전자 설정 → 기능 ③·④ 켜기」를 한 번 누른 뒤(차 화면 「설정」 대역) 시나리오 버튼을 누르거나, 오른쪽 가족 앱에서 직접 「데리러 와」·「응원 녹음」을 보내 보세요. 자세한 내용은 [`pleos-scenario/README.md`](pleos-scenario/README.md)에 있습니다.
 
 ## 필요한 설정
 

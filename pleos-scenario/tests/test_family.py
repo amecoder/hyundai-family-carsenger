@@ -116,7 +116,7 @@ def test_feed_cursor_from_before_a_reset_is_told_to_start_over() -> None:
 
 def test_cheer_shows_in_chat_and_reaches_the_car_with_one_id() -> None:
     hub = FamilyHub()
-    cheer_id = hub.family_cheer("엄마", "🎙 응원 음성 \"장 보느라 고생해\"", "장 보느라 고생해", audio_id="a1")
+    cheer_id = hub.family_cheer("엄마", "응원 음성 \"장 보느라 고생해\"", "장 보느라 고생해", audio_id="a1")
     item = hub.feed_after(0)["items"][-1]
     assert (item["kind"], item["sender"], item["cheer_id"]) == ("family", "엄마", cheer_id)
     cmd = hub.commands_after(0)["commands"][-1]

@@ -28,6 +28,9 @@ STATIC = Path(__file__).resolve().parent.parent / "static"
 INDEX = STATIC / "index.html"
 FAMILY_PAGE = STATIC / "family.html"
 ANALYTICS_PAGE = STATIC / "analytics.html"
+# Asta Sans (SIL OFL, static/fonts/OFL.txt), Pleos Connect's system font, subset to Latin + Hangul.
+# One exact URL maps to one file, so no request path ever reaches the file system.
+FONT_URL, FONT_FILE = "/fonts/AstaSans.woff2", STATIC / "fonts" / "AstaSans.woff2"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 # the demo serves one family; the event store itself keys every row by family
 DEFAULT_FAMILY_ID = os.environ.get("CARSENGER_FAMILY_ID", "demo-family")
@@ -40,7 +43,7 @@ PICKUP_ETA_MIN = 12  # demo stand-in for a navigation ETA
 MAX_CLIP_MS = 60_000
 # names this server may be reached by: this PC, and 10.0.2.2 = the PC as seen from inside the emulator
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "10.0.2.2")
-# recorded driver answers (16 kHz mono PCM) the car feeds to speech recognition; kept outside the repo
+# recorded driver answers (16 kHz mono PCM) the car feeds to speech recognition; in PLEOS_VOICE_DIR, never in the public mirror
 VOICE_CLIPS = ("driver_yes", "driver_no")
 # the car's answers to a pickup request: each request is answered once
 PICKUP_ANSWERS = frozenset({"pickup_accepted", "pickup_declined", "pickup_timed_out"})
@@ -290,6 +293,8 @@ class Handler(BaseHTTPRequestHandler):
             # the phone frame inside the runner page (embed=1) is the presenter's screen, not a family visit
             if query.get("embed") != ["1"]:
                 self.app.track("가족 웹", "family_room_opened")
+        elif url.path == FONT_URL:
+            self._send(HTTPStatus.OK, FONT_FILE.read_bytes(), "font/woff2")
         elif url.path == "/analytics":
             self._send(HTTPStatus.OK, ANALYTICS_PAGE.read_bytes(), "text/html; charset=utf-8")
         elif url.path == "/api/analytics":
@@ -436,6 +441,10 @@ class Handler(BaseHTTPRequestHandler):
         if not {"cheer_voice", "safety_alert"} <= set(given) or not all(isinstance(body[k], bool) for k in given):
             self._send(HTTPStatus.BAD_REQUEST, {"error": "cheer_voice·safety_alert(선택: usage_recording)는 true/false여야 합니다"})
             return
+        if body.get("usage_recording") is True:
+            # opting in is the driver's own tap on the car; the stand-in may only opt out
+            self._send(HTTPStatus.BAD_REQUEST, {"error": "사용 기록 켜기는 운전자가 차에서 직접 합니다(usage_recording은 false만 가능)"})
+            return
         self.app.hub.add_command("driver_settings", **{k: body[k] for k in given})
         self._send(HTTPStatus.OK, {"ok": True})
 
@@ -445,7 +454,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.BAD_REQUEST, {"error": f"clip은 {', '.join(QUICK_REPLIES)} 중 하나여야 합니다"})
             return
         sender, text = QUICK_REPLIES[clip]
-        send_cheer(self.app.hub, self.app.voice_dir, sender, text, clip, f"🎙 빠른 답장 \"{text}\"")
+        send_cheer(self.app.hub, self.app.voice_dir, sender, text, clip, f"빠른 답장 \"{text}\"")
         self.app.track(sender, "quick_reply_sent")
         self._send(HTTPStatus.OK, {"ok": True})
 
@@ -473,7 +482,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             self._send(HTTPStatus.BAD_REQUEST, {"error": str(e)})
             return
-        self.app.hub.family_cheer(sender, f"🎙 응원 음성 ({_clip_length(duration_ms)}) \"{caption}\"", caption,
+        self.app.hub.family_cheer(sender, f"응원 음성 ({_clip_length(duration_ms)}) \"{caption}\"", caption,
                                   audio_id=clip_id, duration_ms=duration_ms)
         self.app.track(sender, "cheer_sent")
         self._send(HTTPStatus.OK, {"audio_id": clip_id})
@@ -534,6 +543,16 @@ def make_server(console: Console, host: str = "127.0.0.1", port: int = 8090,
     return ScenarioServer((host, port), console, hub, runner, grabber, voice_dir, analytics, family_id)
 
 
+def open_analytics(db_path: Path, salt_path: Path) -> EventStore | None:
+    """Open the usage log, or run the demo without it: the store refuses a damaged or swapped key (so a withdrawal
+    can never miss rows), and that refusal must not take the whole demo down with it."""
+    try:
+        return EventStore(db_path, salt_path)
+    except (ValueError, sqlite3.Error, OSError) as e:
+        log.warning("사용 기록 없이 시작합니다(기존 기록은 그대로 둡니다): %s — 원인을 고치거나 --no-analytics로 띄우세요", e)
+        return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="현대 패밀리 카신저 시나리오 실행기 (Pleos Virtual Console 자동 조작 + 가족 서버 대역)")
     parser.add_argument("--port", type=int, default=8090)
@@ -544,7 +563,7 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     grabber = None if args.no_screen else ScreenGrabber(adb_capture(args.adb), resize=pillow_resize())
-    analytics = None if args.no_analytics else EventStore(DATA_DIR / "analytics.sqlite", DATA_DIR / "analytics.salt")
+    analytics = None if args.no_analytics else open_analytics(DATA_DIR / "analytics.sqlite", DATA_DIR / "analytics.salt")
     srv = make_server(VirtualConsoleClient(args.console), port=args.port, grabber=grabber, analytics=analytics)
     # 0.0.0.0 is not needed: the emulator reaches 127.0.0.1 through its 10.0.2.2 alias
     log.info("시나리오 실행기: http://127.0.0.1:%d (Virtual Console: %s)", args.port, args.console)

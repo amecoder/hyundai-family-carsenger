@@ -73,7 +73,7 @@ const carAppToFront = () => adb("shell", "am", "start", "--user", "10", "-n", "d
   await phone.locator("#who button[data-s='엄마']").click();
   await phone.locator("#cheerBtn").click();
   await phone.locator("#recBtn").click();
-  await page.waitForTimeout(3500); // cheer_mom.wav is about 3 s
+  await page.waitForTimeout(3500); // cheer_mom.wav is about 2 s; keep recording a little longer
   await phone.locator("#recBtn").click();
   await phone.locator("#caption").fill("조심히 와~ 저녁 준비해 둘게");
   await phone.locator("#sendCheer").click();

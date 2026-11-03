@@ -97,6 +97,14 @@ class DriverSettingsTest {
     }
 
     @Test
+    fun aRemoteCommandCannotTurnTheUsageLogOn() {
+        // only the driver's own switch opts in; a remote command may only opt out
+        cmd(Command.ApplyDriverSettings(cheerVoice = true, safetyAlert = true, usageRecording = true))
+        assertFalse(d.settings.usageRecording)
+        assertTrue(d.settings.cheerVoice)
+    }
+
+    @Test
     fun resetKeepsTheDriversChoice() {
         d.updateSettings(DriverSettings(cheerVoice = true))
         cmd(Command.Reset)

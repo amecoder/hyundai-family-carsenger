@@ -34,7 +34,7 @@ _HUBS: dict[str, FamilyHub] = {}
 def cheers_sent(base: str, n: int = 1) -> None:
     """Cheers waiting for the car, put straight into the hub the way a scenario sends them (no family-side event)."""
     for _ in range(n):
-        _HUBS[base].family_cheer("엄마", "🎙 응원", "잘 가")
+        _HUBS[base].family_cheer("엄마", "응원", "잘 가")
 
 
 def wait_past_reset(base: str) -> None:
@@ -218,3 +218,13 @@ def get_status(url: str) -> tuple[int, dict]:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read())
+
+
+def test_a_broken_usage_store_does_not_stop_the_demo(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """The usage log is optional now that there is no pilot: a damaged key starts the runner without it, loudly."""
+    from scenario.server import open_analytics
+
+    (tmp_path / "salt").write_bytes(b"short")  # a key shorter than 32 bytes is refused as damaged
+    assert open_analytics(tmp_path / "a.sqlite", tmp_path / "salt") is None
+    assert "사용 기록 없이" in caplog.text and "--no-analytics" in caplog.text
+    assert isinstance(open_analytics(tmp_path / "b.sqlite", tmp_path / "good-salt"), EventStore)

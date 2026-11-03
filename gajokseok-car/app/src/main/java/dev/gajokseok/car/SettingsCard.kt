@@ -64,10 +64,10 @@ class DriverSettingsCard(
 
     private fun build(): View = with(context) {
         val card = column(padding = 36, gap = 20).apply {
-            background = rounded(Palette.panel2, dp(28).toFloat(), Palette.teal)
+            background = rounded(Palette.panel2, dp(12).toFloat()); raise(3)
             isClickable = true // taps on the card must not fall through to the home screen behind it
         }
-        card.addView(label("⚙ 운전자 설정", 18f, Palette.teal, bold = true))
+        card.addView(label("운전자 설정", 18f, Palette.sand, bold = true))
         card.addView(label("켠 기능만 작동합니다. 언제든 끌 수 있어요.", 22f, bold = true))
         cheerSwitch = settingRow(card, "가족 목소리 바로 듣기", "가족이 보낸 응원 음성을 주행 중에도 차 스피커로 바로 재생")
         safetySwitch = settingRow(card, "안전 운전 응원", "한 주행에 급제동·과속이 합쳐 2번이면 가족방에 한 번 알림")
@@ -77,7 +77,7 @@ class DriverSettingsCard(
             textSize = 22f
             isAllCaps = false
             setTextColor(Palette.ink)
-            background = rounded(Palette.panel, dp(18).toFloat(), Palette.line)
+            background = rounded(Palette.panel, dp(12).toFloat(), Palette.line)
             setOnClickListener { onClose() }
         }, lp(MATCH, dp(70)))
         card
@@ -85,7 +85,7 @@ class DriverSettingsCard(
 
     private fun Context.settingRow(parent: LinearLayout, title: String, detail: String): Switch {
         val r = row(gap = 20).apply {
-            background = rounded(Palette.panel, dp(16).toFloat())
+            background = rounded(Palette.panel, dp(12).toFloat())
             setPadding(dp(20), dp(14), dp(20), dp(14))
         }
         val text = column()
@@ -94,7 +94,7 @@ class DriverSettingsCard(
         r.addView(text, lp(0, WRAP, 1f))
         val sw = Switch(this).apply {
             contentDescription = title
-            thumbTintList = ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(Palette.teal, Color.LTGRAY))
+            thumbTintList = ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(Palette.accent, Color.LTGRAY))
             setOnCheckedChangeListener { _, _ -> if (!filling) onChange(current()) }
         }
         r.addView(sw, lp(WRAP))

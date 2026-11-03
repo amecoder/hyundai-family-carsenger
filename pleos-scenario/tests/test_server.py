@@ -192,6 +192,18 @@ def inbox_types(base: str) -> list[str]:
     return [c["type"] for c in inbox["commands"]]
 
 
+def test_the_bundled_font_is_served_and_nothing_else_under_fonts(base: str) -> None:
+    """Asta Sans (OFL, Pleos Connect's system font) ships with the pages, so every PC shows the same type."""
+    with urllib.request.urlopen(base + "/fonts/AstaSans.woff2", timeout=5) as r:
+        assert r.status == 200
+        assert r.headers["Content-Type"] == "font/woff2"
+        assert r.read(4) == b"wOF2"
+    for path in ("/fonts/OFL.txt", "/fonts/../scenario/server.py", "/fonts/%2e%2e/scenario/server.py"):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(base + path, timeout=5)
+        assert e.value.code == 404, path
+
+
 def test_family_page_is_served(base: str) -> None:
     status, html = get(base + "/family")
     assert status == 200
@@ -379,7 +391,7 @@ def test_driver_voice_command_reaches_the_car(base: str) -> None:
 
 def test_driver_settings_stand_in_reaches_the_car(base: str) -> None:
     """The runner stands in for the driver's taps on the car's settings card, like the driver voice buttons."""
-    body = {"cheer_voice": True, "safety_alert": False, "usage_recording": True}
+    body = {"cheer_voice": True, "safety_alert": False, "usage_recording": False}
     assert post(base + "/api/driver/settings", body) == (200, {"ok": True})
     _, inbox = get(base + "/api/car/inbox?after=0")
     cmd = inbox["commands"][-1]
@@ -388,6 +400,8 @@ def test_driver_settings_stand_in_reaches_the_car(base: str) -> None:
     assert post(base + "/api/driver/settings", {**body, "safety_alert": "yes"})[0] == 400
     assert post(base + "/api/driver/settings", {"cheer_voice": True})[0] == 400
     assert post(base + "/api/driver/settings", {**body, "usage_recording": "on"})[0] == 400
+    # opting in to the usage log is the driver's own tap on the car; the stand-in may only opt out
+    assert post(base + "/api/driver/settings", {**body, "usage_recording": True})[0] == 400
     # the runner's buttons leave the usage log to the driver: without the key the car keeps its own choice
     assert post(base + "/api/driver/settings", {"cheer_voice": False, "safety_alert": False})[0] == 200
     cmd = get(base + "/api/car/inbox?after=0")[1]["commands"][-1]
@@ -410,7 +424,7 @@ def test_scenario_cheer_carries_the_family_recording(tmp_path: Path) -> None:
     _wav(tmp_path / "cheer_mom.wav", seconds=1.5)
     hub = FamilyHub()
     DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command(
-        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "🎙 응원 음성"})
+        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "응원 음성"})
     cmd = hub.commands_after(0)["commands"][-1]
     assert (cmd["type"], cmd["from"], cmd["text"], cmd["duration_ms"]) == ("cheer", "엄마", "조심히 와", 1500)
     assert "clip" not in cmd
@@ -424,7 +438,7 @@ def test_scenario_cheer_without_its_recording_falls_back_to_text(tmp_path: Path)
 
     hub = FamilyHub()
     DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command(
-        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "🎙 응원 음성"})
+        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "응원 음성"})
     cmd = hub.commands_after(0)["commands"][-1]
     assert cmd["type"] == "cheer" and "audio_id" not in cmd and "clip" not in cmd
 
@@ -460,7 +474,7 @@ def test_broken_voice_file_falls_back_to_text(tmp_path: Path) -> None:
     (tmp_path / "cheer_mom.wav").write_bytes(b"not a wav file")
     hub = FamilyHub()
     DemoWorld(FakeConsole(), hub, voice_dir=tmp_path).car_command(
-        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "🎙 응원 음성"})
+        "cheer", {"from": "엄마", "text": "조심히 와", "clip": "cheer_mom", "feed_text": "응원 음성"})
     cmd = hub.commands_after(0)["commands"][-1]
     assert cmd["type"] == "cheer" and "audio_id" not in cmd
 
