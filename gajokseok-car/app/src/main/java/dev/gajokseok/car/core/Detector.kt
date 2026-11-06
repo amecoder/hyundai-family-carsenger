@@ -136,6 +136,7 @@ class Detector(
     private val drowsyPattern = DrowsyPattern()
     private val drowsyMoments = ArrayDeque<Long>()
     private var drowsyHandled = false
+    private var drowsyAlertSent = false
     private var restStop: RestStop? = null
     private var restAskedAtMs: Long? = null
     private var restAccepted = false
@@ -268,7 +269,11 @@ class Detector(
         drowsyHandled = true
         restHintGiven = true // one voice prompt about rest is enough
         val out = mutableListOf<Effect>(note)
-        if (settings.safetyAlert) out += Effect.SafetyAlert("${driverName()}가 오래 운전해서 피곤할 수 있어요. 쉬어 가라고 한마디 보내 줄래요?")
+        // the question may be asked again after a pickup interrupts it, but the family hears about it once per drive
+        if (settings.safetyAlert && !drowsyAlertSent) {
+            drowsyAlertSent = true
+            out += Effect.SafetyAlert("${driverName()}가 오래 운전해서 피곤할 수 있어요. 쉬어 가라고 한마디 보내 줄래요?")
+        }
         // during a pickup a stop could not be told from the pickup place on arrival, so the car only advises rest
         val stop = restStop.takeIf { phase == PickupPhase.NONE }
         if (stop == null) {
@@ -340,7 +345,8 @@ class Detector(
         }
         val t = trip
         when {
-            phase == PickupPhase.ACCEPTED -> {
+            // a rest stop is only offered with no pickup under way, so it always comes before a pickup accepted later
+            phase == PickupPhase.ACCEPTED && !restAccepted -> {
                 phase = PickupPhase.ARRIVED
                 out += Effect.FamilyMessage("${pickup?.place}에 도착했어요", UsageEvent.PICKUP_ARRIVED)
             }
@@ -382,6 +388,7 @@ class Detector(
         drowsyPattern.reset()
         drowsyMoments.clear()
         drowsyHandled = false
+        drowsyAlertSent = false
         restAskedAtMs = null
         restAccepted = false
     }

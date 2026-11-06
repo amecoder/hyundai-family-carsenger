@@ -10,6 +10,7 @@ import android.media.AudioAttributes
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import dev.gajokseok.car.core.spokenText
 import java.util.Locale
 
 private const val TAG = "GajokVoice"
@@ -86,7 +87,7 @@ class Voice(context: Context, private val onReady: (Boolean, String?) -> Unit) {
     private fun speak(text: String) {
         if (!ready) return
         speaking = true
-        runCatching { tts.speak(text, false) }.onFailure { speaking = false; Log.e(TAG, "speak failed", it) }
+        runCatching { tts.speak(spokenText(text), false) }.onFailure { speaking = false; Log.e(TAG, "speak failed", it) }
     }
 
     fun stop() {

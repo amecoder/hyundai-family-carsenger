@@ -677,4 +677,30 @@ class DetectorTest {
         swerve()
         assertEquals(listOf("졸음 신호가 보여요. 잠시 쉬어 가세요."), spoken(swerve()))
     }
+
+    @Test
+    fun parkingAtTheRestStopIsNotThePickupPlaceWhenThePickupCameAfterTheRestStop() {
+        longCruise()
+        swerve()
+        swerve()
+        cmd(Command.DriverReply(accept = true))
+        acceptPickup()
+        val atRestStop = messages(park())
+        assertFalse(atRestStop.any { it.contains("수학학원") })
+        assertTrue(atRestStop.contains("휴게소에서 쉬는 중이에요"))
+        drive()
+        assertEquals(listOf("○○수학학원 앞에 도착했어요"), messages(park()))
+    }
+
+    @Test
+    fun aPickupInterruptingTheRestQuestionDoesNotRepeatTheFamilyAlert() {
+        longCruise()
+        swerve()
+        assertEquals(1, swerve().filterIsInstance<Effect.SafetyAlert>().size)
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        cmd(Command.DriverReply(accept = false))
+        val again = swerve()
+        assertEquals(listOf("졸음 신호가 보여요. ○○ 졸음쉼터에 들를까요?"), spoken(again))
+        assertTrue(again.filterIsInstance<Effect.SafetyAlert>().isEmpty())
+    }
 }
