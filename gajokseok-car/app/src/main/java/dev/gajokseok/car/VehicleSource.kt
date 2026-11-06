@@ -10,6 +10,7 @@ import ai.pleos.playground.vehicle.listener.DoorPositionListener
 import ai.pleos.playground.vehicle.listener.EvBatteryStateOfChargeListener
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.SeatOccupancyListener
+import ai.pleos.playground.vehicle.listener.SteeringWheelAngleListener
 import android.car.Car
 import android.car.VehiclePropertyIds
 import android.car.hardware.CarPropertyValue
@@ -81,6 +82,12 @@ class VehicleSource(private val context: Context, private val onSignal: (Signal)
             v.getEvBattery().registerEvBatteryStateOfCharge(object : EvBatteryStateOfChargeListener {
                 override fun onFailed(p0: Exception) { Log.e(TAG, "battery", p0) }
                 override fun onEvBatteryStateOfChargeUpdated(p0: Int?) { p0?.let { emit(Signal.Battery(it.toFloat())) } }
+            })
+        }
+        guard("steering") {
+            v.getSteeringWheel().registerSteeringWheelAngle(object : SteeringWheelAngleListener {
+                override fun onFailed(p0: Exception) { Log.e(TAG, "steering", p0) }
+                override fun onSteeringWheelAngleUpdated(p0: Float?) { p0?.let { emit(Signal.Steering(it)) } }
             })
         }
         guard("speed") { startSpeed() }

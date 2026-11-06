@@ -101,6 +101,7 @@ class FamilyLink(
         "reset" -> Command.Reset
         "set_trip" -> Command.SetTrip(o.getString("origin"), o.getString("destination"), o.getInt("eta_min"), o.getString("driver"), o.getString("child"))
         "set_rest_threshold" -> Command.SetRestThreshold(o.getInt("seconds"))
+        "set_rest_stop" -> Command.SetRestStop(o.getString("name"), o.getDouble("lat"), o.getDouble("lon"))
         "pickup_request" -> Command.PickupRequest(
             o.getString("by"), o.getString("place"), o.getInt("eta_min"),
             lat = o.optDouble("lat").takeUnless { it.isNaN() }, lon = o.optDouble("lon").takeUnless { it.isNaN() },

@@ -42,7 +42,7 @@
 
   <h2>3. 어떤 영상이 무엇을 보여 주나</h2>
   <img class="diagram" src="diagrams/03_scenario_map.svg" alt="시나리오 9개와 기능 4개의 대응표. 기능 1 차가 먼저 알림, 기능 2 픽업을 목소리로, 기능 3 가족 목소리 바로 재생, 기능 4 안전 운전 응원. 평일 학원 픽업과 출발 전 픽업은 기능 1·2·3, 픽업 거절은 기능 2, 짐만 실음과 혼자 장거리 출장과 EV 충전 완료는 기능 1, 주말 장거리는 기능 1과 3, 급제동·과속 → 가족 응원은 기능 1·3·4, 응원이 연달아 온 날은 기능 3을 보여 준다.">
-  <ul class="toc"><li><a href="#pickup">평일 학원 픽업</a></li><li><a href="#parked_pickup">출발 전 픽업 요청 · 오른쪽 탑승</a></li><li><a href="#pickup_decline">픽업 거절 (지금은 못 들름)</a></li><li><a href="#luggage">짐만 실음 (오탐 방지)</a></li><li><a href="#long_drive">주말 장거리 · 할머니 댁</a></li><li><a href="#solo_long_drive">혼자 장거리 출장 (휴식 권유)</a></li><li><a href="#safe_driving">급제동·과속 → 가족 응원</a></li><li><a href="#many_cheers">응원이 연달아 온 날 (차례로 재생)</a></li><li><a href="#ev_charge">EV 충전 완료 알림</a></li></ul>
+  <ul class="toc"><li><a href="#pickup">평일 학원 픽업</a></li><li><a href="#parked_pickup">출발 전 픽업 요청 · 오른쪽 탑승</a></li><li><a href="#pickup_decline">픽업 거절 (지금은 못 들름)</a></li><li><a href="#luggage">짐만 실음 (오탐 방지)</a></li><li><a href="#long_drive">주말 장거리 · 할머니 댁</a></li><li><a href="#solo_long_drive">혼자 장거리 출장 (휴식 권유)</a></li><li><a href="#safe_driving">급제동·과속 → 가족 응원</a></li><li><a href="#many_cheers">응원이 연달아 온 날 (차례로 재생)</a></li><li><a href="#ev_charge">EV 충전 완료 알림</a></li><li><a href="#drowsy_rest">졸음 위험 → 쉼터 제안</a></li></ul>
 
   <h2>4. 시나리오별 영상 (소리 포함)</h2>
   <p class="muted">화면 왼쪽은 시나리오 실행기, 가운데는 Pleos 에뮬레이터의 차량 화면, 오른쪽은 가족 휴대폰 웹입니다. 화면 아래 자막이 지금 단계와 「확인할 것」을 알려 줍니다. 소리는 차의 음성 안내와 엄마·민지 목소리 응원입니다. 먼저 차 화면 「설정」(실행기의 「운전자 설정」 버튼이 대신 누름)에서 기능 ③·④를 켠 상태로 녹화했습니다(둘 다 운전자가 켜야 작동하는 기능).</p>
@@ -100,6 +100,13 @@
     <p>아파트 충전소에 주차해 충전 중, 충전량이 목표(80%)에 도달하면 가족에게 알림 (기능 ①)</p>
     <video controls preload="none" poster="scenarios/ev_charge.jpg"><source src="scenarios/ev_charge.mp4" type="video/mp4"></video>
     <details><summary>단계별로 확인할 것 (4단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 경로: 아파트 지하 충전소 → 회사</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>충전 시작</b><br><span class=muted>상황: 충전량 60%</span><br><span class=check>확인할 것: 변화 없음</span></li><li><b>충전 진행</b><br><span class=muted>상황: 70% → 75%</span><br><span class=check>확인할 것: 변화 없음</span></li><li><b>목표 도달</b><br><span class=muted>상황: 80%</span><br><span class=check>확인할 것: 가족방: &quot;충전 80% 완료, 출발 가능&quot;</span></li></ol></details>
+  </section>
+  <section class="card" id="drowsy_rest">
+    <h3>10. 졸음 위험 → 쉼터 제안 <span class="dur">76초</span></h3>
+    <p>오래 달린 뒤 멈춰 있던 핸들을 갑자기 꺾는 패턴이 2번 나오면 차가 쉼터를 음성으로 제안하고, 운전자가 켜 둔 경우 가족방에 알려 가족 목소리로 쉬어 가게 하는지 확인 (기능 ②③④)</p>
+    <video controls preload="none" poster="scenarios/drowsy_rest.jpg"><source src="scenarios/drowsy_rest.mp4" type="video/mp4"></video>
+    <details><summary>단계별로 확인할 것 (8단계)</summary><ol><li><b>준비: 주차 상태로 초기화</b><br><span class=muted>상황: 기어 P, 문 닫힘, 뒷좌석 비움, 오늘 경로: 판교 사무실 → 부산 출장지</span><br><span class=check>확인할 것: 가족방이 비워짐</span></li><li><b>출발</b><br><span class=muted>상황: 기어 D, 시속 100km. 다음 쉼터를 차에 알려 둠(정식 서비스는 경로에서 찾음)</span><br><span class=check>확인할 것: 가족방: "아빠 판교 사무실에서 출발, 240분 뒤 부산 출장지 도착 예정"</span></li><li><b>오래 주행</b><br><span class=muted>상황: 고속도로 주행 (1시간을 20초로 압축)</span><br><span class=check>확인할 것: 변화 없음</span></li><li><b>핸들 패턴 1번째</b><br><span class=muted>상황: 핸들이 몇 초 멈췄다가 갑자기 꺾임</span><br><span class=check>확인할 것: 차 메모 "졸음 의심 핸들 패턴 1번"</span></li><li><b>핸들 패턴 2번째</b><br><span class=muted>상황: 다시 핸들이 멈췄다가 갑자기 꺾임</span><br><span class=check>확인할 것: 차 음성 "졸음 신호가 보여요. ○○ 졸음쉼터에 들를까요?" · 가족방 안내 "아빠가 오래 운전해서 피곤할 수 있어요…"</span></li><li><b>아빠가 "응"</b><br><span class=muted>상황: 운전자가 말로 승인 (목소리는 클로바더빙 녹음을 마이크 대신 넣음)</span><br><span class=check>확인할 것: 내비에 쉼터 경유지 추가 · 가족방: "아빠가 ○○ 졸음쉼터에 들러 쉬어 가요"</span></li><li><b>민지가 응원 음성을 보냄</b><br><span class=muted>상황: 가족방 안내를 본 민지가 녹음해 보냄</span><br><span class=check>확인할 것: 민지 목소리가 주행 중 바로 재생</span></li><li><b>쉼터 정차</b><br><span class=muted>상황: 감속해 정차, 기어 P</span><br><span class=check>확인할 것: 가족방: "휴게소에서 쉬는 중이에요"</span></li></ol></details>
+    <p>졸음을 확정하는 감지가 아니라 핸들 각도로 위험을 추정합니다. 판정값과 쉼터 위치는 시연값이고, 핸들 움직임은 Virtual Console로 넣었습니다. 새 차 안내 문장 2개는 Microsoft Edge TTS 음성입니다.</p>
   </section>
 
   <h2>5. 직접 조작 시연</h2>

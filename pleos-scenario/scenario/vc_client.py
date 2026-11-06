@@ -13,6 +13,7 @@ GEARS = {"P": "Park", "R": "Reverse", "N": "Neutral", "D": "Drive"}
 DOOR_CODES = {"front_left": "fl", "front_right": "fr", "rear_left": "rl", "rear_right": "rr"}
 SEAT_AREAS = ("driver", "passenger", "rear_left", "rear_right")
 MAX_SPEED_KPH = 240
+MAX_STEERING_DEG = 540
 
 
 class VirtualConsoleError(RuntimeError):
@@ -72,11 +73,13 @@ class VirtualConsoleClient:
     def soc(self, value: int) -> None:
         self._call("PUT", f"/vehicle/ev-battery?field=soc&value={_clamp(value, 0, 100)}")
 
-    def controls(self, speed_kph: float, accelerator: float, brake: float) -> None:
+    def controls(self, speed_kph: float, accelerator: float, brake: float, steering_deg: float | None = None) -> None:
+        # the console keeps the last angle when steering is left out
+        steering = "" if steering_deg is None else f"&steering={_clamp(steering_deg, -MAX_STEERING_DEG, MAX_STEERING_DEG)}"
         self._call(
             "PUT",
             f"/vehicle/controls?speed={_clamp(speed_kph, 0, MAX_SPEED_KPH)}"
-            f"&accelerator={_clamp(accelerator, 0, 100)}&brake={_clamp(brake, 0, 100)}",
+            f"&accelerator={_clamp(accelerator, 0, 100)}&brake={_clamp(brake, 0, 100)}{steering}",
         )
 
     def keepalive(self, client_id: str) -> None:

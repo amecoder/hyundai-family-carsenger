@@ -4,7 +4,7 @@ import threading
 
 from scenario.runner import ScenarioRunner
 from scenario.scenarios import (
-    PICKUP, SCENARIOS, CarCommand, Cruise, Drive, FamilySays, Gear, Scenario, Step, Stop, Wait, cheer,
+    PICKUP, PLACES, REST_STOP, SCENARIOS, TICK_S, CarCommand, Cruise, Drive, FamilySays, Gear, Scenario, Step, Stop, Wait, cheer, find,
 )
 
 
@@ -27,8 +27,10 @@ class RecordingClient:
     def soc(self, value: int) -> None:
         self.calls.append(("soc", value))
 
-    def controls(self, speed_kph: float, accelerator: float, brake: float) -> None:
+    def controls(self, speed_kph: float, accelerator: float, brake: float, steering_deg: float | None = None) -> None:
         self.calls.append(("controls", round(speed_kph), round(accelerator), round(brake)))
+        if steering_deg is not None:
+            self.calls.append(("steering", round(steering_deg)))
 
     def keepalive(self, client_id: str) -> None:
         self.keepalives = getattr(self, "keepalives", 0) + 1
@@ -337,3 +339,50 @@ def test_voice_note_names_clova_dubbing_not_public_tts() -> None:
     assert not [t for t in texts if "공개 TTS" in t]
     voiced = [t for t in texts if "음성 인식(STT)으로" in t]
     assert len(voiced) >= 2 and all("클로바더빙 녹음" in t for t in voiced)
+
+
+def _drowsy_calls() -> list[tuple]:
+    client = RecordingClient()
+    run_sync(find("drowsy_rest"), client)
+    return client.calls
+
+
+def test_drowsy_scenario_gives_the_car_a_rest_stop_with_coordinates() -> None:
+    stops = [dict(c[2]) for c in _drowsy_calls() if c[:2] == ("car", "set_rest_stop")]
+    assert stops == [{"name": REST_STOP, "lat": PLACES[REST_STOP][0], "lon": PLACES[REST_STOP][1]}]
+
+
+def test_drowsy_scenario_swerves_twice_and_returns_the_wheel_to_centre() -> None:
+    angles = [c[1] for c in _drowsy_calls() if c[0] == "steering"]
+    turns = [a for prev, a in zip([0, *angles], angles) if a != 0 and prev == 0]
+    assert len(turns) == 2 and all(abs(a) >= 15 for a in turns)
+    assert angles[-1] == 0
+
+
+def test_drowsy_scenario_holds_the_wheel_still_long_enough_before_each_turn() -> None:
+    still, last_angle, gaps = 0, 0, []
+    for c in _drowsy_calls():
+        if c[0] == "controls":
+            still += 1
+        elif c[0] == "steering":
+            if c[1] != 0 and last_angle == 0:
+                gaps.append((still - 1) * TICK_S)  # the swerve's own controls call came just before this entry
+            still, last_angle = 0, c[1]
+    assert len(gaps) == 2 and min(gaps) >= 5
+
+
+def test_drowsy_scenario_starts_swerving_after_half_the_rest_threshold() -> None:
+    calls = _drowsy_calls()
+    rest = next(dict(c[2]) for c in calls if c[:2] == ("car", "set_rest_threshold"))["seconds"]
+    depart = calls.index(("gear", "D"))
+    first = next(i for i, c in enumerate(calls) if c[0] == "steering" and c[1] != 0)
+    assert sum(c[0] == "controls" for c in calls[depart:first]) * TICK_S >= rest / 2
+
+
+def test_drowsy_scenario_answers_yes_then_a_family_voice_then_rests() -> None:
+    calls = _drowsy_calls()
+    swerve = max(i for i, c in enumerate(calls) if c[0] == "steering" and c[1] != 0)
+    yes = next(i for i, c in enumerate(calls) if c[:2] == ("car", "driver_voice"))
+    voice = next(i for i, c in enumerate(calls) if c[:2] == ("car", "cheer"))
+    park = max(i for i, c in enumerate(calls) if c == ("gear", "P"))
+    assert swerve < yes < voice < park

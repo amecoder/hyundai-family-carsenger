@@ -428,4 +428,253 @@ class DetectorTest {
         cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
         assertEquals(listOf(UsageEvent.PICKUP_TIMED_OUT), events(d.onTick(60_000)))
     }
+
+    // ---- drowsiness risk: still wheel then a sudden turn, twice, after a long enough drive ----
+
+    private fun cruise() { sig(Signal.Gear(GearState.DRIVE)); sig(Signal.Speed(100f, now)); d.onTick(now) }
+
+    /** One still spell followed by a sudden turn, and back to the lane. */
+    private fun swerve(): List<Effect> {
+        now += 5_000
+        val hit = sig(Signal.Steering(20f))
+        now += 1_100
+        val tick = d.onTick(now)
+        val back = sig(Signal.Steering(0f))
+        now += 1_100
+        return hit + tick + back + d.onTick(now)
+    }
+
+    private fun longCruise() {
+        cmd(Command.SetRestThreshold(40))
+        cmd(Command.SetRestStop("○○ 졸음쉼터", 37.37, 127.10))
+        cruise()
+        now += 21_000
+    }
+
+    private fun spoken(e: List<Effect>) = e.filterIsInstance<Effect.Speak>().map { it.text }
+
+    @Test
+    fun twoPatternsAfterALongDriveOfferARestStopByVoice() {
+        longCruise()
+        assertTrue(spoken(swerve()).isEmpty())
+        val e = swerve()
+        assertEquals(listOf("졸음 신호가 보여요. ○○ 졸음쉼터에 들를까요?"), spoken(e))
+        assertTrue(Effect.ListenForReply in e)
+    }
+
+    @Test
+    fun theFamilyIsToldWithoutTheWordDrowsyWhenTheDriverOptedIn() {
+        longCruise()
+        swerve()
+        val alert = swerve().filterIsInstance<Effect.SafetyAlert>().single()
+        assertEquals("아빠가 오래 운전해서 피곤할 수 있어요. 쉬어 가라고 한마디 보내 줄래요?", alert.text)
+    }
+
+    @Test
+    fun theFamilyIsNotToldWhenTheDriverKeptTheAlertOff() {
+        d.updateSettings(DriverSettings(cheerVoice = true, safetyAlert = false, usageRecording = true))
+        longCruise()
+        swerve()
+        val e = swerve()
+        assertTrue(e.none { it is Effect.SafetyAlert })
+        assertEquals(1, spoken(e).size) // the driver still gets the question
+    }
+
+    @Test
+    fun patternsEarlyInADriveDoNotCount() {
+        cmd(Command.SetRestThreshold(600))
+        cmd(Command.SetRestStop("○○ 졸음쉼터", 37.37, 127.10))
+        cruise()
+        swerve()
+        assertTrue(spoken(swerve()).isEmpty())
+    }
+
+    @Test
+    fun patternsFarApartDoNotCount() {
+        longCruise()
+        swerve()
+        now += 6 * 60_000
+        assertTrue(spoken(swerve()).none { it.contains("졸음") }) // the plain rest reminder may still speak
+    }
+
+    @Test
+    fun acceptingAddsTheWaypointAndTellsTheFamily() {
+        longCruise()
+        swerve(); swerve()
+        val e = cmd(Command.DriverReply(accept = true))
+        assertTrue(Effect.AddWaypoint("○○ 졸음쉼터", 37.37, 127.10) in e)
+        assertTrue(Effect.StopListening in e)
+        assertEquals(listOf("○○ 졸음쉼터에 들러 갈게요."), spoken(e))
+        assertEquals(listOf("아빠가 ○○ 졸음쉼터에 들러 쉬어 가요"), messages(e))
+    }
+
+    @Test
+    fun acceptingKeepsTheFamilyOutWhenTheAlertIsOff() {
+        d.updateSettings(DriverSettings(cheerVoice = true, safetyAlert = false, usageRecording = true))
+        longCruise()
+        swerve(); swerve()
+        assertTrue(messages(cmd(Command.DriverReply(accept = true))).isEmpty())
+    }
+
+    @Test
+    fun parkingAfterAcceptingReportsTheRest() {
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.DriverReply(accept = true))
+        assertEquals(listOf("휴게소에서 쉬는 중이에요"), messages(park()))
+    }
+
+    @Test
+    fun decliningKeepsTheRouteAndStaysOutOfTheFamilyRoom() {
+        longCruise()
+        swerve(); swerve()
+        val e = cmd(Command.DriverReply(accept = false))
+        assertTrue(e.none { it is Effect.AddWaypoint })
+        assertTrue(messages(e).isEmpty())
+        assertEquals(listOf("알겠어요. 졸리면 꼭 쉬어 가세요."), spoken(e))
+    }
+
+    @Test
+    fun noAnswerClosesTheQuestion() {
+        longCruise()
+        swerve(); swerve()
+        assertTrue(d.snapshot().restOfferOpen)
+        now += 12_000
+        val e = d.onTick(now)
+        assertTrue(Effect.StopListening in e)
+        assertFalse(d.snapshot().restOfferOpen)
+        assertTrue(cmd(Command.DriverReply(accept = true)).none { it is Effect.AddWaypoint })
+    }
+
+    @Test
+    fun withoutAKnownRestStopTheCarOnlyAdvisesRest() {
+        cmd(Command.SetRestThreshold(40))
+        cruise()
+        now += 21_000
+        swerve()
+        val e = swerve()
+        assertEquals(listOf("졸음 신호가 보여요. 잠시 쉬어 가세요."), spoken(e))
+        assertTrue(Effect.ListenForReply !in e)
+    }
+
+    @Test
+    fun theOfferComesOncePerDrive() {
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.DriverReply(accept = false))
+        assertTrue(spoken(swerve() + swerve()).isEmpty())
+    }
+
+    @Test
+    fun theRestReminderDoesNotRepeatAfterTheOffer() {
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.DriverReply(accept = false))
+        now += 40_000
+        assertTrue(spoken(d.onTick(now)).isEmpty())
+    }
+
+    @Test
+    fun anOpenPickupQuestionIsNotInterrupted() {
+        longCruise()
+        swerve()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        assertTrue(spoken(swerve()).isEmpty())
+    }
+
+    @Test
+    fun aPickupRequestReplacesAnOpenRestQuestion() {
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        assertFalse(d.snapshot().restOfferOpen)
+        val e = cmd(Command.DriverReply(accept = true))
+        assertEquals(PickupPhase.ACCEPTED, d.snapshot().pickup)
+        assertTrue(e.none { it is Effect.AddWaypoint && it.place == "○○ 졸음쉼터" })
+    }
+
+    @Test
+    fun aNewDriveStartsClean() {
+        longCruise()
+        swerve()
+        park()
+        cmd(Command.SetRestStop("○○ 졸음쉼터", 37.37, 127.10))
+        cruise()
+        now += 21_000
+        assertTrue(spoken(swerve()).isEmpty())
+    }
+
+    @Test
+    fun parkingAfterAcceptingStaysSilentWhenTheAlertIsOff() {
+        d.updateSettings(DriverSettings(cheerVoice = true, safetyAlert = false, usageRecording = true))
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.DriverReply(accept = true))
+        assertTrue(messages(park()).isEmpty())
+        assertEquals("집", d.snapshot().trip?.destination) // still on the way: the rest stop is not the destination
+    }
+
+    @Test
+    fun leavingParkThroughReverseStartsANewDrive() {
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.DriverReply(accept = true))
+        park()
+        sig(Signal.Gear(GearState.REVERSE))
+        drive()
+        now += 10_000
+        assertEquals(listOf("집에 도착해서 주차했어요"), messages(park()))
+    }
+
+    @Test
+    fun passingThroughNeutralKeepsTheDriveClock() {
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.DriverReply(accept = false))
+        sig(Signal.Gear(GearState.NEUTRAL))
+        drive()
+        now += 50_000
+        assertTrue(spoken(d.onTick(now)).isEmpty())
+    }
+
+    @Test
+    fun duringAPickupTheCarOnlyAdvisesRestSoNoStopIsMistakenForThePickupPlace() {
+        longCruise()
+        acceptPickup()
+        swerve()
+        val e = swerve()
+        assertEquals(listOf("졸음 신호가 보여요. 잠시 쉬어 가세요."), spoken(e))
+        assertTrue(Effect.ListenForReply !in e)
+        assertFalse(d.snapshot().restOfferOpen)
+    }
+
+    @Test
+    fun aRestQuestionCutOffByAPickupMayStillAdviseRestLater() {
+        longCruise()
+        swerve(); swerve()
+        cmd(Command.PickupRequest(by = "민지", place = "○○수학학원 앞", etaMin = 12))
+        cmd(Command.DriverReply(accept = true))
+        assertEquals(listOf("졸음 신호가 보여요. 잠시 쉬어 가세요."), spoken(swerve()))
+    }
+
+    @Test
+    fun parkingClosesAnOpenRestQuestion() {
+        longCruise()
+        swerve(); swerve()
+        val e = park()
+        assertTrue(Effect.StopListening in e)
+        assertFalse(d.snapshot().restOfferOpen)
+        assertTrue(cmd(Command.DriverReply(accept = true)).none { it is Effect.AddWaypoint })
+    }
+
+    @Test
+    fun resetForgetsTheRestStop() {
+        cmd(Command.SetRestStop("○○ 졸음쉼터", 37.37, 127.10))
+        cmd(Command.Reset)
+        cmd(Command.SetRestThreshold(40))
+        cruise()
+        now += 21_000
+        swerve()
+        assertEquals(listOf("졸음 신호가 보여요. 잠시 쉬어 가세요."), spoken(swerve()))
+    }
 }

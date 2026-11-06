@@ -75,3 +75,17 @@ def test_keepalive_posts_browser_session() -> None:
     c, t = make()
     c.keepalive("runner-1")
     assert t.calls == [("POST", "http://vc:8088/browser/session?client=runner-1")]
+
+
+def test_controls_sends_the_steering_angle_only_when_given() -> None:
+    c, t = make()
+    c.controls(speed_kph=100, accelerator=25, brake=0, steering_deg=25)
+    assert t.calls[-1][1].endswith("&steering=25")
+    c.controls(speed_kph=100, accelerator=25, brake=0)
+    assert "steering" not in t.calls[-1][1]
+
+
+def test_controls_clamps_the_steering_angle() -> None:
+    c, t = make()
+    c.controls(speed_kph=100, accelerator=25, brake=0, steering_deg=900)
+    assert t.calls[-1][1].endswith("&steering=540")

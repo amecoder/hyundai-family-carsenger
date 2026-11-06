@@ -17,12 +17,15 @@ sealed interface Signal {
     /** Seat occupancy with the real meaning (SDK inversion already corrected by the caller). */
     data class RearSeat(val side: Side, val occupied: Boolean) : Signal
     data class Battery(val socPct: Float) : Signal
+    data class Steering(val deg: Float) : Signal
 }
 
 sealed interface Command {
     data object Reset : Command
     data class SetTrip(val origin: String, val destination: String, val etaMin: Int, val driver: String, val child: String) : Command
     data class SetRestThreshold(val seconds: Int) : Command
+    /** The next rest stop on the route; the demo runner supplies it (a real build would look it up along the route). */
+    data class SetRestStop(val name: String, val lat: Double, val lon: Double) : Command
     /** lat/lon = the place's coordinates when the family picked a known place; free-typed places have none. */
     data class PickupRequest(val by: String, val place: String, val etaMin: Int, val lat: Double? = null, val lon: Double? = null) : Command
     data class DriverReply(val accept: Boolean) : Command
@@ -39,6 +42,7 @@ object UsageEvent {
     const val TRIP_DEPARTED = "trip_departed"
     const val TRIP_ARRIVED = "trip_arrived"
     const val REST_STOPPED = "rest_stopped"
+    const val REST_STOP_ACCEPTED = "rest_stop_accepted"
     const val PICKUP_ACCEPTED = "pickup_accepted"
     const val PICKUP_DECLINED = "pickup_declined"
     const val PICKUP_ARRIVED = "pickup_arrived"
@@ -72,6 +76,7 @@ sealed interface Effect {
 
 data class Trip(val origin: String, val destination: String, val etaMin: Int, val driver: String, val child: String)
 data class Pickup(val by: String, val place: String, val etaMin: Int, val lat: Double? = null, val lon: Double? = null)
+data class RestStop(val name: String, val lat: Double, val lon: Double)
 
 data class Snapshot(
     val gear: GearState,
@@ -84,6 +89,7 @@ data class Snapshot(
     val socPct: Float?,
     val harshBrakes: Int,
     val speedings: Int,
+    val restOfferOpen: Boolean = false,
 )
 
 class Detector(
@@ -104,6 +110,9 @@ class Detector(
     private val speedingResetKph: Float = 100f,
     private val speedingHoldMs: Long = 10_000,
     private val safetyAlertAt: Int = 2,
+    private val drowsyMinKph: Float = 60f,
+    private val drowsyPatternsNeeded: Int = 2,
+    private val drowsyWindowMs: Long = 5 * 60_000,
 ) {
     private var gear = GearState.UNKNOWN
     private var speedKph = 0f
@@ -124,6 +133,12 @@ class Detector(
     private var drivingSinceMs: Long? = null
     private var restThresholdMs = 2 * 60 * 60 * 1000L
     private var restHintGiven = false
+    private val drowsyPattern = DrowsyPattern()
+    private val drowsyMoments = ArrayDeque<Long>()
+    private var drowsyHandled = false
+    private var restStop: RestStop? = null
+    private var restAskedAtMs: Long? = null
+    private var restAccepted = false
     private val doorOpen = mutableMapOf(Side.LEFT to false, Side.RIGHT to false)
     private val seatOccupied = mutableMapOf(Side.LEFT to false, Side.RIGHT to false)
     private val occupiedWhenDoorOpened = mutableMapOf(Side.LEFT to false, Side.RIGHT to false)
@@ -136,7 +151,7 @@ class Detector(
         settings = next
     }
 
-    fun snapshot() = Snapshot(gear, speedKph, phase, pickup?.place, cheersReceived, trip, drivingSinceMs, socPct, harshBrakes, speedings)
+    fun snapshot() = Snapshot(gear, speedKph, phase, pickup?.place, cheersReceived, trip, drivingSinceMs, socPct, harshBrakes, speedings, restAskedAtMs != null)
 
     fun onSignal(signal: Signal, nowMs: Long): List<Effect> = when (signal) {
         is Signal.Gear -> onGear(signal.gear, nowMs)
@@ -144,12 +159,14 @@ class Detector(
         is Signal.RearDoor -> onDoor(signal.side, signal.open)
         is Signal.RearSeat -> onSeat(signal.side, signal.occupied)
         is Signal.Battery -> onBattery(signal.socPct)
+        is Signal.Steering -> onSteering(signal.deg, nowMs)
     }
 
     fun onCommand(command: Command, nowMs: Long): List<Effect> = when (command) {
         Command.Reset -> { resetAll(); listOf(Effect.StopVoice, Effect.Banner(null), Effect.ShowScreen(if (gear == GearState.DRIVE) Screen.DRIVING else Screen.HOME)) }
         is Command.SetTrip -> { trip = Trip(command.origin, command.destination, command.etaMin, command.driver, command.child); emptyList() }
         is Command.SetRestThreshold -> { restThresholdMs = command.seconds * 1000L; emptyList() }
+        is Command.SetRestStop -> { restStop = RestStop(command.name, command.lat, command.lon); emptyList() }
         is Command.PickupRequest -> onPickupRequest(command, nowMs)
         is Command.DriverReply -> onDriverReply(command.accept)
         is Command.Cheer -> onCheer(command)
@@ -162,6 +179,12 @@ class Detector(
     }
 
     fun onTick(nowMs: Long): List<Effect> {
+        drowsyPattern.onTick(nowMs, isCruising())
+        val restAsked = restAskedAtMs
+        if (restAsked != null && nowMs - restAsked >= replyTimeoutMs) {
+            restAskedAtMs = null
+            return listOf(Effect.StopListening, Effect.Note("쉼터 질문에 답이 없어 경로를 그대로 둡니다"))
+        }
         val asked = pickupAskedAtMs
         if (phase == PickupPhase.REQUESTED && asked != null && nowMs - asked >= replyTimeoutMs) {
             return decline("답이 없어서 경유지를 추가하지 않았어요. 가족에게 전할게요.", UsageEvent.PICKUP_TIMED_OUT)
@@ -231,6 +254,46 @@ class Detector(
         return listOf(Effect.SafetyAlert("운전 중 $what 있었어요. 응원 한마디 보내 줄래요?"))
     }
 
+    private fun isCruising() = gear == GearState.DRIVE && speedKph >= drowsyMinKph
+
+    private fun onSteering(deg: Float, nowMs: Long): List<Effect> {
+        if (!drowsyPattern.onAngle(deg, nowMs, isCruising())) return emptyList()
+        // tiredness needs time at the wheel: early in a drive the same turn is far more likely a lane change
+        val since = drivingSinceMs
+        if (since == null || nowMs - since < restThresholdMs / 2) return emptyList()
+        drowsyMoments.addLast(nowMs)
+        while (drowsyMoments.first() < nowMs - drowsyWindowMs) drowsyMoments.removeFirst()
+        val note = Effect.Note("졸음 의심 핸들 패턴 ${drowsyMoments.size}번 (멈춰 있던 핸들을 갑자기 꺾음)")
+        if (drowsyMoments.size < drowsyPatternsNeeded || drowsyHandled || phase == PickupPhase.REQUESTED) return listOf(note)
+        drowsyHandled = true
+        restHintGiven = true // one voice prompt about rest is enough
+        val out = mutableListOf<Effect>(note)
+        if (settings.safetyAlert) out += Effect.SafetyAlert("${driverName()}가 오래 운전해서 피곤할 수 있어요. 쉬어 가라고 한마디 보내 줄래요?")
+        // during a pickup a stop could not be told from the pickup place on arrival, so the car only advises rest
+        val stop = restStop.takeIf { phase == PickupPhase.NONE }
+        if (stop == null) {
+            out += Effect.Speak("졸음 신호가 보여요. 잠시 쉬어 가세요.")
+        } else {
+            restAskedAtMs = nowMs
+            out += Effect.Speak("졸음 신호가 보여요. ${stop.name}에 들를까요?")
+            out += Effect.ListenForReply
+        }
+        return out
+    }
+
+    private fun onRestReply(accept: Boolean): List<Effect> {
+        restAskedAtMs = null
+        val stop = restStop
+        if (!accept || stop == null) return listOf(Effect.StopListening, Effect.Speak("알겠어요. 졸리면 꼭 쉬어 가세요."))
+        restAccepted = true
+        val out = mutableListOf(Effect.StopListening, Effect.Speak("${stop.name}에 들러 갈게요."), Effect.Banner("경유지: ${stop.name}"))
+        if (settings.safetyAlert) out += Effect.FamilyMessage("${driverName()}가 ${stop.name}에 들러 쉬어 가요", UsageEvent.REST_STOP_ACCEPTED)
+        out += Effect.AddWaypoint(stop.name, stop.lat, stop.lon)
+        return out
+    }
+
+    private fun driverName() = trip?.driver ?: "운전자"
+
     private fun restThresholdLabel(): String {
         val minutes = restThresholdMs / 60_000
         return if (minutes >= 60) "${minutes / 60}시간" else "${restThresholdMs / 1000}초(시연)"
@@ -240,20 +303,22 @@ class Detector(
         val prev = gear
         gear = next
         if (next == prev) return emptyList()
+        // one drive runs from P to P: passing through N or R keeps the risky-moment count and the one alert
+        if (prev == GearState.PARK || prev == GearState.UNKNOWN) resetDriveSafety()
         return when (next) {
-            GearState.DRIVE -> onDepart(nowMs, fromPark = prev == GearState.PARK || prev == GearState.UNKNOWN)
+            GearState.DRIVE -> onDepart(nowMs)
             GearState.PARK -> if (prev == GearState.UNKNOWN) emptyList() else onPark(nowMs)
             else -> emptyList()
         }
     }
 
-    private fun onDepart(nowMs: Long, fromPark: Boolean): List<Effect> {
+    private fun onDepart(nowMs: Long): List<Effect> {
         // a cheer that is playing keeps playing: family voices are allowed while driving
         val out = mutableListOf<Effect>(Effect.ShowScreen(Screen.DRIVING))
-        drivingSinceMs = nowMs
-        restHintGiven = false
-        // one drive runs from P to P: passing through N or R keeps the risky-moment count and the one alert
-        if (fromPark) resetDriveSafety()
+        if (drivingSinceMs == null) {
+            drivingSinceMs = nowMs
+            restHintGiven = false
+        }
         val t = trip
         if (t != null) {
             departures += 1
@@ -269,6 +334,10 @@ class Detector(
         val out = mutableListOf<Effect>(Effect.Banner(null))
         val drovelong = drivingSinceMs?.let { nowMs - it >= restThresholdMs } == true
         drivingSinceMs = null
+        if (restAskedAtMs != null) {
+            restAskedAtMs = null
+            out += Effect.StopListening
+        }
         val t = trip
         when {
             phase == PickupPhase.ACCEPTED -> {
@@ -282,6 +351,8 @@ class Detector(
                 trip = null
             }
             drovelong -> out += Effect.FamilyMessage("휴게소에서 쉬는 중이에요", UsageEvent.REST_STOPPED)
+            // the rest stop is not the destination, so with the alert off the family simply hears nothing
+            restAccepted -> if (settings.safetyAlert) out += Effect.FamilyMessage("휴게소에서 쉬는 중이에요", UsageEvent.REST_STOPPED)
             t != null && departures > 0 && phase == PickupPhase.NONE -> {
                 out += Effect.FamilyMessage("${t.destination}에 도착해서 주차했어요", UsageEvent.TRIP_ARRIVED)
                 trip = null
@@ -308,12 +379,21 @@ class Detector(
         speedingCounted = false
         speedings = 0
         safetyAlerted = false
+        drowsyPattern.reset()
+        drowsyMoments.clear()
+        drowsyHandled = false
+        restAskedAtMs = null
+        restAccepted = false
     }
 
     private fun onPickupRequest(c: Command.PickupRequest, nowMs: Long): List<Effect> {
         pickup = Pickup(c.by, c.place, c.etaMin, c.lat, c.lon)
         phase = PickupPhase.REQUESTED
         pickupAskedAtMs = nowMs
+        if (restAskedAtMs != null) { // the family's request takes over the microphone; the risk is still there
+            restAskedAtMs = null
+            drowsyHandled = false
+        }
         return listOf(
             Effect.ShowScreen(Screen.PICKUP_PROMPT),
             Effect.Speak("${c.by}가 ${c.place}에서 픽업을 요청했어요. 경유지로 추가할까요?"),
@@ -330,13 +410,14 @@ class Detector(
     }
 
     private fun onDriverReply(accept: Boolean): List<Effect> {
+        if (restAskedAtMs != null) return onRestReply(accept)
         val p = pickup
         if (phase != PickupPhase.REQUESTED || p == null) return emptyList()
         if (!accept) return decline("알겠어요. 가족에게 전할게요.", UsageEvent.PICKUP_DECLINED)
         val back = Effect.ShowScreen(if (gear == GearState.DRIVE) Screen.DRIVING else Screen.HOME)
         phase = PickupPhase.ACCEPTED
         pickupAskedAtMs = null
-        val driver = trip?.driver ?: "운전자"
+        val driver = driverName()
         val out = mutableListOf(
             Effect.StopListening,
             back,
@@ -392,6 +473,7 @@ class Detector(
         drivingSinceMs = null
         restHintGiven = false
         restThresholdMs = 2 * 60 * 60 * 1000L
+        restStop = null
         Side.entries.forEach { doorOpen[it] = false; seatOccupied[it] = false; occupiedWhenDoorOpened[it] = false }
     }
 }

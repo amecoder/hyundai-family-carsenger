@@ -206,7 +206,8 @@ class MainActivity : Activity() {
                 voiceFallback?.let { main.removeCallbacks(it) }
                 voiceFallback = Runnable {
                     voiceFallback = null
-                    if (detector.snapshot().pickup != PickupPhase.REQUESTED) return@Runnable
+                    val s = detector.snapshot()
+                    if (s.pickup != PickupPhase.REQUESTED && !s.restOfferOpen) return@Runnable
                     showNote(if (fed) "음성 인식 결과 없음 → 시연 응답 적용" else "음성 파일·인식 사용 불가 → 시연 응답 적용")
                     handleCommand(Command.DriverReply(c.fallbackAccept))
                 }.also { main.postDelayed(it, if (fed) 6_000 else 0) }

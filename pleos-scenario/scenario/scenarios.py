@@ -13,7 +13,7 @@ class Vehicle(Protocol):
     def lock(self, locked: bool) -> None: ...
     def seat_occupied(self, area: str, occupied: bool) -> None: ...
     def soc(self, value: int) -> None: ...
-    def controls(self, speed_kph: float, accelerator: float, brake: float) -> None: ...
+    def controls(self, speed_kph: float, accelerator: float, brake: float, steering_deg: float | None = None) -> None: ...
     def keepalive(self, client_id: str) -> None: ...
     def car_command(self, type_: str, payload: dict) -> None: ...
     def family_says(self, sender: str, text: str) -> None: ...
@@ -164,7 +164,9 @@ PLACES: dict[str, tuple[float, float]] = {
     "○○역 2번 출구": (37.4020, 127.1086),
     "○○태권도장 앞": (37.3998, 127.1150),
     "집": (37.3595, 127.1052),
+    "○○ 졸음쉼터": (37.3720, 127.1090),
 }
+REST_STOP = "○○ 졸음쉼터"
 
 
 def pickup_fields(by: str, place: str, eta_min: int) -> tuple[tuple[str, object], ...]:
@@ -207,7 +209,24 @@ class Brake:
             sleep(TICK_S)
 
 
-Action = Gear | Door | Lock | Seat | Soc | Drive | Cruise | Stop | Wait | Brake | CarCommand | FamilySays
+@dataclass(frozen=True)
+class Swerve:
+    """A tired driver's correction at a steady speed: turn the wheel suddenly, then back to centre."""
+
+    kph: float
+    deg: float
+    seconds: float = 0.6
+
+    def run(self, v: Vehicle, sleep: Sleep, should_stop: ShouldStop) -> None:
+        for _ in range(_ticks(self.seconds)):
+            if should_stop():
+                break
+            v.controls(self.kph, accelerator=25, brake=0, steering_deg=self.deg)
+            sleep(TICK_S)
+        v.controls(self.kph, accelerator=25, brake=0, steering_deg=0)  # never leave the wheel turned, even when stopped
+
+
+Action = Gear | Door | Lock | Seat | Soc | Drive | Cruise | Stop | Wait | Brake | Swerve | CarCommand | FamilySays
 
 
 @dataclass(frozen=True)
@@ -393,6 +412,36 @@ SOLO_LONG_DRIVE = Scenario(
     ),
 )
 
+def rest_stop_step() -> CarCommand:
+    lat, lon = PLACES[REST_STOP]
+    return CarCommand("set_rest_stop", (("name", REST_STOP), ("lat", lat), ("lon", lon)))
+
+
+DROWSY_REST = Scenario(
+    "drowsy_rest",
+    "졸음 위험 → 쉼터 제안",
+    "오래 달린 뒤 멈춰 있던 핸들을 갑자기 꺾는 패턴이 2번 나오면 차가 쉼터를 음성으로 제안하고, 운전자가 켜 둔 경우 가족방에 알려 가족 목소리로 쉬어 가게 하는지 확인 (기능 ②③④)",
+    (
+        reset("판교 사무실", "부산 출장지", 240, rest_seconds=40),
+        Step("출발", "기어 D, 시속 100km. 다음 쉼터를 차에 알려 둠(정식 서비스는 경로에서 찾음)",
+             "가족방: \"아빠 판교 사무실에서 출발, 240분 뒤 부산 출장지 도착 예정\"",
+             (rest_stop_step(), Gear("D"), Drive(100, 5))),
+        Step("오래 주행", "고속도로 주행 (1시간을 20초로 압축)", "변화 없음", (Cruise(100, 16),)),
+        Step("핸들 패턴 1번째", "핸들이 몇 초 멈췄다가 갑자기 꺾임", "차 메모 \"졸음 의심 핸들 패턴 1번\"",
+             (Cruise(100, 6), Swerve(100, 25))),
+        Step("핸들 패턴 2번째", "다시 핸들이 멈췄다가 갑자기 꺾임",
+             "차 음성 \"졸음 신호가 보여요. ○○ 졸음쉼터에 들를까요?\" · 가족방 안내 \"아빠가 오래 운전해서 피곤할 수 있어요…\"",
+             (Cruise(100, 6), Swerve(100, -25), Cruise(100, 4))),
+        Step("아빠가 \"응\"", f"운전자가 말로 승인 {STT_NOTE}",
+             "내비에 쉼터 경유지 추가 · 가족방: \"아빠가 ○○ 졸음쉼터에 들러 쉬어 가요\"",
+             (driver_says(True), Cruise(100, 6))),
+        Step("민지가 응원 음성을 보냄", "가족방 안내를 본 민지가 녹음해 보냄", "민지 목소리가 주행 중 바로 재생",
+             (cheer("민지", "아빠, 운전 오래 했지? 쉬었다 와요", "cheer_minji"), Cruise(100, 6))),
+        Step("쉼터 정차", "감속해 정차, 기어 P", "가족방: \"휴게소에서 쉬는 중이에요\"",
+             (Stop(100, 5), Gear("P"), Wait(4))),
+    ),
+)
+
 PARKED_PICKUP = Scenario(
     "parked_pickup",
     "출발 전 픽업 요청 · 오른쪽 탑승",
@@ -416,7 +465,7 @@ PARKED_PICKUP = Scenario(
 )
 
 SCENARIOS: tuple[Scenario, ...] = (PICKUP, PARKED_PICKUP, PICKUP_DECLINE, LUGGAGE, LONG_DRIVE, SOLO_LONG_DRIVE,
-                                   SAFE_DRIVING, MANY_CHEERS, EV_CHARGE)
+                                   SAFE_DRIVING, DROWSY_REST, MANY_CHEERS, EV_CHARGE)
 
 
 def find(scenario_id: str) -> Scenario | None:

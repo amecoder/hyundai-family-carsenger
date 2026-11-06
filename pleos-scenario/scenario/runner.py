@@ -21,8 +21,8 @@ class _SpeedMemo:
         self._vehicle = vehicle
         self.last_kph = 0.0
 
-    def controls(self, speed_kph: float, accelerator: float, brake: float) -> None:
-        self._vehicle.controls(speed_kph, accelerator=accelerator, brake=brake)
+    def controls(self, speed_kph: float, accelerator: float, brake: float, steering_deg: float | None = None) -> None:
+        self._vehicle.controls(speed_kph, accelerator=accelerator, brake=brake, steering_deg=steering_deg)
         self.last_kph = speed_kph
 
     def __getattr__(self, name: str) -> Any:

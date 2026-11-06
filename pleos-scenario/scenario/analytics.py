@@ -34,6 +34,7 @@ EVENTS: dict[str, str] = {
     "trip_departed": "car",
     "trip_arrived": "car",
     "rest_stopped": "car",
+    "rest_stop_accepted": "car",
     "pickup_accepted": "car",
     "pickup_declined": "car",
     "pickup_arrived": "car",
